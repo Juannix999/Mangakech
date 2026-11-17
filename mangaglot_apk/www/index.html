@@ -235,7 +235,7 @@
           };
         });
       } catch (e) {
-        mState.apiError = "Para consultar la API en vivo de MangaDex abre este archivo en tu navegador (Chrome/Safari) con conexión a internet.";
+        mState.apiError = `No se pudo consultar MangaDex: ${e?.message || "conexión rechazada"}`;
       } finally {
         mState.apiLoading = false;
         renderPhone();
