@@ -1,0 +1,10 @@
+{
+  "name": "MangaGlot — Aprende Idiomas con Manga",
+  "short_name": "MangaGlot",
+  "start_url": "/static/index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070a12",
+  "theme_color": "#e11d48",
+  "description": "Lee manga, toca palabras o frases con el táctil para traducirlas a cualquier idioma y exporta a AnkiDroid."
+}

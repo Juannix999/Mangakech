@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "MangaGlot",
+    "slug": "mangaglot-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#070a12"
+    },
+    "android": {
+      "package": "com.mangaglot.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#e11d48"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.mangaglot.app",
+      "supportsTablet": true
+    },
+    "plugins": [
+      "expo-asset"
+    ]
+  }
+}

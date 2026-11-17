@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MangaGlot Mobile — Lector de Manga con API en Vivo + Anki</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .word-chip { user-select: none; -webkit-user-select: none; transition: all 0.14s ease; }
+    .phone-shadow {
+      box-shadow: 0 22px 65px rgba(0, 0, 0, 0.65), 0 0 35px rgba(225, 29, 72, 0.25);
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-2 sm:p-4 flex flex-col items-center">
+  <div id="phone-root" class="w-full max-w-[430px] rounded-[36px] border-4 border-slate-800 bg-[#070a12] text-slate-100 overflow-hidden phone-shadow flex flex-col"></div>
+
+  <script>
+    const TARGET_LANGUAGES = [
+      { code: "es", name: "Español", flag: "🇪🇸" },
+      { code: "en", name: "English", flag: "🇺🇸" },
+      { code: "fr", name: "Français", flag: "🇫🇷" },
+      { code: "pt", name: "Português", flag: "🇧🇷" },
+      { code: "de", name: "Deutsch", flag: "🇩🇪" },
+      { code: "it", name: "Italiano", flag: "🇮🇹" },
+      { code: "ja", name: "日本語", flag: "🇯🇵" },
+      { code: "ko", name: "한국어", flag: "🇰🇷" },
+      { code: "zh", name: "中文", flag: "🇨🇳" },
+      { code: "ru", name: "Русский", flag: "🇷🇺" }
+    ];
+
+    const WORD_DICT = {
+      "今日": { es: "hoy", en: "today", fr: "aujourd'hui", pt: "hoje", de: "heute", it: "oggi", ko: "오늘", zh: "今天", ru: "сегодня" },
+      "は": { es: "(tema: respecto a)", en: "(topic marker)", fr: "(thème)", pt: "(tópico)", de: "(Thema)", it: "(tema)", ko: "은/는", zh: "（主题）", ru: "(тема)" },
+      "本当に": { es: "realmente", en: "really", fr: "vraiment", pt: "realmente", de: "wirklich", it: "davvero", ko: "정말로", zh: "真的", ru: "действительно" },
+      "いい": { es: "bueno", en: "good, nice", fr: "bon, beau", pt: "bom", de: "gut, schön", it: "bello", ko: "좋은", zh: "好", ru: "хороший" },
+      "天気": { es: "clima, tiempo", en: "weather", fr: "météo", pt: "clima", de: "Wetter", it: "tempo", ko: "날씨", zh: "天气", ru: "погода" },
+      "ですね": { es: "¿verdad?", en: "isn't it?", fr: "n'est-ce pas ?", pt: "não é?", de: "nicht wahr?", it: "vero?", ko: "그렇죠?", zh: "对吧？", ru: "не так ли?" },
+      "毎日": { es: "cada día", en: "every day", fr: "chaque jour", pt: "todo dia", de: "jeden Tag", it: "ogni giorno", ko: "매일", zh: "每天", ru: "каждый день" },
+      "少しずつ": { es: "poco a poco", en: "little by little", fr: "petit à petit", pt: "pouco a pouco", de: "Stück für Stück", it: "poco a poco", ko: "조금씩", zh: "一点点", ru: "понемногу" },
+      "読んで": { es: "leyendo", en: "reading", fr: "en lisant", pt: "lendo", de: "lesend", it: "leggendo", ko: "읽고", zh: "读着", ru: "читая" },
+      "います": { es: "estoy (continuo)", en: "am doing", fr: "en train de", pt: "estou", de: "bin dabei", it: "sto", ko: "있어요", zh: "正在", ru: "сейчас" },
+      "一緒に": { es: "juntos", en: "together", fr: "ensemble", pt: "juntos", de: "zusammen", it: "insieme", ko: "함께", zh: "一起", ru: "вместе" },
+      "新しい": { es: "nuevas", en: "new", fr: "nouveaux", pt: "novas", de: "neue", it: "nuove", ko: "새로운", zh: "新的", ru: "новые" },
+      "言葉": { es: "palabras, idioma", en: "words", fr: "mots", pt: "palavras", de: "Wörter", it: "parole", ko: "단어", zh: "词语", ru: "слова" },
+      "を": { es: "(objeto directo)", en: "(object)", fr: "(objet)", pt: "(objeto)", de: "(Objekt)", it: "(oggetto)", ko: "을/를", zh: "（宾语）", ru: "(объект)" },
+      "勉強しよう": { es: "¡estudiemos!", en: "let's study!", fr: "étudions !", pt: "vamos estudar!", de: "lernen wir!", it: "studiamo!", ko: "공부하자!", zh: "学习吧！", ru: "давай учить!" },
+      "오늘": { es: "hoy", en: "today", fr: "aujourd'hui", pt: "hoje", de: "heute", it: "oggi", ja: "今日", zh: "今天", ru: "сегодня" },
+      "날씨가": { es: "el clima", en: "weather", fr: "le temps", pt: "o clima", de: "das Wetter", it: "il tempo", ja: "天気が", zh: "天气", ru: "погода" },
+      "정말": { es: "realmente", en: "really", fr: "vraiment", pt: "realmente", de: "wirklich", it: "davvero", ja: "本当に", zh: "真的", ru: "очень" },
+      "좋네요": { es: "¡está muy bueno!", en: "is great!", fr: "est super !", pt: "está ótimo!", de: "ist toll!", it: "è bello!", ja: "いいですね", zh: "真好", ru: "отличная!" },
+      "우리": { es: "nosotros", en: "we", fr: "nous", pt: "nós", de: "wir", it: "noi", ja: "私たち", zh: "我们", ru: "мы" },
+      "같이": { es: "juntos", en: "together", fr: "ensemble", pt: "juntos", de: "zusammen", it: "insieme", ja: "一緒に", zh: "一起", ru: "вместе" },
+      "천천히": { es: "despacio", en: "slowly", fr: "lentement", pt: "devagar", de: "langsam", it: "lentamente", ja: "ゆっくり", zh: "慢慢", ru: "медленно" },
+      "읽어": { es: "leer", en: "read", fr: "lire", pt: "ler", de: "lesen", it: "leggere", ja: "読んで", zh: "读", ru: "читать" },
+      "볼까요?": { es: "¿probamos?", en: "shall we try?", fr: "essayons ?", pt: "vamos tentar?", de: "versuchen wir?", it: "proviamo?", ja: "みようか？", zh: "试试吧？", ru: "попробуем?" }
+    };
+
+    const SENTENCES = {
+      "ja-b1": { es: "¡Hoy hace muy buen tiempo, ¿verdad?!", en: "The weather is really nice today!", fr: "Il fait vraiment beau aujourd'hui !", pt: "O tempo está ótimo hoje!", de: "Das Wetter ist heute wirklich schön!", it: "Oggi fa davvero bel tempo!", ko: "오늘은 정말 날씨가 좋네요!", zh: "今天天气真好啊！", ru: "Сегодня отличная погода!" },
+      "ja-b2": { es: "Lo leo poco a poco todos los días.", en: "I read it little by little every day.", fr: "Je le lis petit à petit chaque jour.", pt: "Eu leio aos poucos todos os dias.", de: "Ich lese es jeden Tag Stück für Stück.", it: "Lo leggo poco a poco ogni giorno.", ko: "매일 조금씩 읽고 있어요.", zh: "我每天一点点地读。", ru: "Я читаю понемногу каждый день." },
+      "ja-b3": { es: "¡Estudiemos nuevas palabras juntos!", en: "Let's study new words together!", fr: "Étudions de nouveaux mots ensemble !", pt: "Vamos estudar novas palavras juntos!", de: "Lernen wir zusammen neue Wörter!", it: "Studiamo nuove parole insieme!", ko: "함께 새로운 단어를 공부하자!", zh: "我们一起学习新词语吧！", ru: "Давай учить новые слова вместе!" },
+      "ko-b1": { es: "¡El clima de hoy está realmente bueno!", en: "Today's weather is really nice!", fr: "Le temps est vraiment beau aujourd'hui !", pt: "O clima de hoje está ótimo!", de: "Das Wetter heute ist wirklich toll!", it: "Il tempo oggi è davvero bello!", ja: "今日の天気は本当にいいですね！", zh: "今天天气真好！", ru: "Сегодня отличная погода!" },
+      "ko-b2": { es: "¿Intentamos leerlo juntos despacio?", en: "Shall we try reading it together slowly?", fr: "Essayons de le lire ensemble doucement ?", pt: "Vamos tentar ler juntos devagar?", de: "Versuchen wir, es langsam zusammen zu lesen?", it: "Proviamo a leggerlo insieme lentamente?", ja: "一緒にゆっくり読んでみようか？", zh: "我们一起慢慢读吧？", ru: "Попробуем почитать вместе?" }
+    };
+
+    function createMobileAnimeBannerSvg(side) {
+      const isTop = side === "top";
+      const bg1 = isTop ? "#be123c" : "#312e81";
+      const bg2 = isTop ? "#1e1b4b" : "#090d16";
+      const accent = isTop ? "#fb7185" : "#38bdf8";
+      const label = isTop ? "⚔️ 侍 SAMURAI • ANIME BORDER" : "🐉 竜 DRAGON • ANKIDROID READY";
+      const quote = isTop ? "「諦めない！」" : "「力を合わせて」";
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 54" width="400" height="54">
+        <defs>
+          <linearGradient id="mb_${side}" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="${bg1}"/>
+            <stop offset="100%" stop-color="${bg2}"/>
+          </linearGradient>
+        </defs>
+        <rect width="400" height="54" rx="12" fill="url(#mb_${side})" stroke="${accent}" stroke-width="2"/>
+        <circle cx="32" cy="27" r="18" fill="#fde68a" stroke="#090d16" stroke-width="2.5"/>
+        <path d="M14,24 Q32,4 50,24 L42,15 L32,22 L22,15 Z" fill="${accent}" stroke="#090d16" stroke-width="2"/>
+        <circle cx="26" cy="28" r="2.8" fill="#090d16"/>
+        <circle cx="38" cy="28" r="2.8" fill="#090d16"/>
+        <path d="M28,36 Q32,40 36,36" fill="none" stroke="#090d16" stroke-width="2"/>
+        <text x="64" y="23" fill="#ffffff" font-size="12" font-weight="900">${label}</text>
+        <text x="64" y="41" fill="${accent}" font-size="12" font-weight="800">${quote} • Toca o une palabras</text>
+        <text x="355" y="42" fill="#ffffff" fill-opacity="0.22" font-size="38" font-weight="900">${isTop ? "剣" : "炎"}</text>
+      </svg>`;
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    }
+
+    function createMobileMangaBgSvg(lang) {
+      const accent = lang === "ja" ? "#f43f5e" : "#8b5cf6";
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 440" width="380" height="440">
+        <rect width="380" height="440" fill="#cbd5e1"/>
+        <rect x="10" y="10" width="360" height="134" rx="6" fill="#0f172a" stroke="#090d16" stroke-width="4"/>
+        <circle cx="95" cy="80" r="34" fill="#fde68a" stroke="#090d16" stroke-width="3"/>
+        <path d="M55,70 Q95,22 135,70 Z" fill="${accent}" stroke="#090d16" stroke-width="3"/>
+        <circle cx="83" cy="80" r="4" fill="#090d16"/>
+        <circle cx="107" cy="80" r="4" fill="#090d16"/>
+        <path d="M89,95 Q95,101 101,95" fill="none" stroke="#090d16" stroke-width="2.5"/>
+        <rect x="10" y="154" width="360" height="134" rx="6" fill="#1e293b" stroke="#090d16" stroke-width="4"/>
+        <circle cx="305" cy="225" r="32" fill="#fed7aa" stroke="#090d16" stroke-width="3"/>
+        <path d="M268,215 Q305,172 342,215 Z" fill="#38bdf8" stroke="#090d16" stroke-width="3"/>
+        <circle cx="294" cy="225" r="4" fill="#090d16"/>
+        <circle cx="316" cy="225" r="4" fill="#090d16"/>
+        <rect x="10" y="298" width="360" height="132" rx="6" fill="#090d16" stroke="#090d16" stroke-width="4"/>
+        <circle cx="75" cy="368" r="30" fill="#fde68a" stroke="#090d16" stroke-width="3"/>
+        <circle cx="310" cy="368" r="30" fill="#fed7aa" stroke="#090d16" stroke-width="3"/>
+      </svg>`;
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    }
+
+    const MOBILE_CHAPTERS = {
+      ja: {
+        id: "ja", flag: "🇯🇵", name: "Japonés", tts: "ja-JP",
+        bg: createMobileMangaBgSvg("ja"),
+        bubbles: [
+          {
+            id: "ja-b1", top: "3%", left: "36%", width: "61%",
+            original_text: "今日は本当にいい天気ですね！",
+            words: [
+              { surface: "今日", reading: "きょう", pos: "Sustantivo", note: "Hoy (kyō)" },
+              { surface: "は", reading: "wa", pos: "Partícula", note: "Marca el tema" },
+              { surface: "本当に", reading: "ほんとうに", pos: "Adverbio", note: "Realmente" },
+              { surface: "いい", reading: "ii", pos: "Adjetivo", note: "Bueno" },
+              { surface: "天気", reading: "てんき", pos: "Sustantivo", note: "Clima" },
+              { surface: "ですね", reading: "desu ne", pos: "Expresión", note: "¿Verdad?" }
+            ]
+          },
+          {
+            id: "ja-b2", top: "36%", left: "4%", width: "68%",
+            original_text: "毎日少しずつ読んでいます。",
+            words: [
+              { surface: "毎日", reading: "まいにち", pos: "Adverbio", note: "Cada día" },
+              { surface: "少しずつ", reading: "すこしずつ", pos: "Adverbio", note: "Poco a poco" },
+              { surface: "読んで", reading: "よんで", pos: "Verbo", note: "Leyendo" },
+              { surface: "います", reading: "imasu", pos: "Auxiliar", note: "Continuo" }
+            ]
+          },
+          {
+            id: "ja-b3", top: "68%", left: "14%", width: "72%",
+            original_text: "一緒に新しい言葉を勉強しよう！",
+            words: [
+              { surface: "一緒に", reading: "いっしょに", pos: "Adverbio", note: "Juntos" },
+              { surface: "新しい", reading: "あたらしい", pos: "Adjetivo", note: "Nuevas" },
+              { surface: "言葉", reading: "ことば", pos: "Sustantivo", note: "Palabras" },
+              { surface: "を", reading: "o", pos: "Partícula", note: "Objeto" },
+              { surface: "勉強しよう", reading: "べんきょうしよう", pos: "Verbo", note: "¡Estudiemos!" }
+            ]
+          }
+        ]
+      },
+      ko: {
+        id: "ko", flag: "🇰🇷", name: "Coreano", tts: "ko-KR",
+        bg: createMobileMangaBgSvg("ko"),
+        bubbles: [
+          {
+            id: "ko-b1", top: "4%", left: "34%", width: "62%",
+            original_text: "오늘 날씨가 정말 좋네요!",
+            words: [
+              { surface: "오늘", reading: "oneul", pos: "Sustantivo", note: "Hoy" },
+              { surface: "날씨가", reading: "nalssi-ga", pos: "Sustantivo", note: "El clima" },
+              { surface: "정말", reading: "jeongmal", pos: "Adverbio", note: "Realmente" },
+              { surface: "좋네요", reading: "jonneyo", pos: "Adjetivo", note: "¡Muy bueno!" }
+            ]
+          },
+          {
+            id: "ko-b2", top: "68%", left: "12%", width: "76%",
+            original_text: "우리 같이 천천히 읽어 볼까요?",
+            words: [
+              { surface: "우리", reading: "uri", pos: "Pronombre", note: "Nosotros" },
+              { surface: "같이", reading: "gachi", pos: "Adverbio", note: "Juntos" },
+              { surface: "천천히", reading: "cheoncheonhi", pos: "Adverbio", note: "Despacio" },
+              { surface: "읽어", reading: "ilgeo", pos: "Verbo", note: "Leer" },
+              { surface: "볼까요?", reading: "bolkkayo?", pos: "Auxiliar", note: "¿Probamos?" }
+            ]
+          }
+        ]
+      }
+    };
+
+    const TOP_BANNER = createMobileAnimeBannerSvg("top");
+    const BOTTOM_BANNER = createMobileAnimeBannerSvg("bottom");
+
+    const mState = {
+      tab: "reader", // "reader" | "api_catalog" | "anki"
+      chap: "ja",
+      target: "es",
+      mode: "original",
+      multi: false,
+      bubbleId: "ja-b1",
+      wordIndices: [0],
+      saved: [],
+      // Estado del Catálogo en Vivo (API de MangaDex)
+      apiSearchQuery: "",
+      apiLangFilter: "en",
+      apiMangas: [],
+      apiSelectedManga: null,
+      apiChapters: [],
+      apiLoading: false,
+      apiError: "",
+      apiPageUrls: [],
+      apiCurrentPageIdx: 0
+    };
+
+    // Llamado en vivo a la API Pública Oficial de MangaDex
+    async function searchMangaDexApi(query = "") {
+      mState.apiLoading = true;
+      mState.apiError = "";
+      renderPhone();
+      try {
+        const qParam = query.trim() ? `&title=${encodeURIComponent(query.trim())}` : "";
+        const url = `https://api.mangadex.org/manga?limit=8&includes[]=cover_art&contentRating[]=safe&order[followedCount]=desc${qParam}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("No se pudo conectar a MangaDex API");
+        const json = await res.json();
+        mState.apiMangas = (json.data || []).map((item) => {
+          const titles = item.attributes?.title || {};
+          const title = titles.es || titles.en || titles["ja-ro"] || Object.values(titles)[0] || "Manga";
+          const coverRel = (item.relationships || []).find((r) => r.type === "cover_art");
+          const fileName = coverRel?.attributes?.fileName;
+          const cover = fileName
+            ? `https://uploads.mangadex.org/covers/${item.id}/${fileName}.256.jpg`
+            : TOP_BANNER;
+          return {
+            id: item.id,
+            title,
+            origLang: item.attributes?.originalLanguage || "ja",
+            cover
+          };
+        });
+      } catch (e) {
+        mState.apiError = "Para consultar la API en vivo de MangaDex abre este archivo en tu navegador (Chrome/Safari) con conexión a internet.";
+      } finally {
+        mState.apiLoading = false;
+        renderPhone();
+      }
+    }
+
+    async function loadMangaChaptersApi(mangaObj) {
+      mState.apiSelectedManga = mangaObj;
+      mState.apiLoading = true;
+      mState.apiError = "";
+      renderPhone();
+      try {
+        const url = `https://api.mangadex.org/manga/${mangaObj.id}/feed?limit=12&order[chapter]=asc&translatedLanguage[]=${mState.apiLangFilter}`;
+        const res = await fetch(url);
+        const json = await res.json();
+        mState.apiChapters = (json.data || [])
+          .filter((ch) => !ch.attributes?.externalUrl && ch.attributes?.pages > 0)
+          .map((ch) => ({
+            id: ch.id,
+            chapter: ch.attributes?.chapter || "1",
+            title: ch.attributes?.title || `Capítulo ${ch.attributes?.chapter || 1}`,
+            lang: ch.attributes?.translatedLanguage || mState.apiLangFilter,
+            pages: ch.attributes?.pages || 0
+          }));
+      } catch (e) {
+        mState.apiError = "Error al obtener capítulos desde la API.";
+      } finally {
+        mState.apiLoading = false;
+        renderPhone();
+      }
+    }
+
+    async function openChapterFromApi(chObj) {
+      mState.apiLoading = true;
+      renderPhone();
+      try {
+        const res = await fetch(`https://api.mangadex.org/at-home/server/${chObj.id}`);
+        const json = await res.json();
+        const base = json.baseUrl;
+        const hash = json.chapter?.hash;
+        const files = json.chapter?.dataSaver || [];
+        mState.apiPageUrls = files.map((f) => `${base}/data-saver/${hash}/${f}`);
+        mState.apiCurrentPageIdx = 0;
+
+        if (mState.apiPageUrls.length > 0) {
+          MOBILE_CHAPTERS.api_live = {
+            id: "api_live",
+            flag: "🌐",
+            name: mState.apiSelectedManga?.title?.slice(0, 12) || "API Manga",
+            tts: "ja-JP",
+            bg: mState.apiPageUrls[0],
+            bubbles: MOBILE_CHAPTERS.ja.bubbles
+          };
+          mState.chap = "api_live";
+          mState.bubbleId = MOBILE_CHAPTERS.ja.bubbles[0].id;
+          mState.wordIndices = [0];
+          mState.tab = "reader";
+        }
+      } catch (e) {
+        mState.apiError = "No se pudieron cargar las páginas del capítulo.";
+      } finally {
+        mState.apiLoading = false;
+        renderPhone();
+      }
+    }
+
+    function translateWord(surface, targetCode) {
+      return WORD_DICT[surface]?.[targetCode] || WORD_DICT[surface]?.es || surface;
+    }
+
+    function translateBubble(bubbleId, targetCode) {
+      return SENTENCES[bubbleId]?.[targetCode] || SENTENCES[bubbleId]?.es || "";
+    }
+
+    function speakMobile(text, ttsLang) {
+      if (!("speechSynthesis" in window) || !text) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = ttsLang || "ja-JP";
+      u.rate = 0.92;
+      window.speechSynthesis.speak(u);
+    }
+
+    function exportMobileAnki() {
+      if (mState.saved.length === 0) return;
+      const lines = [
+        "#separator:tab",
+        "#html:true",
+        "#deck:MangaGlot_Celular",
+        "#columns:Front\tBack\tReading\tSentence\tSentenceTranslation",
+        ...mState.saved.map((c) => `${c.surface}\t${c.meaning} (${c.lang})\t${c.reading}\t${c.sentence}\t${c.sentenceTrans}`)
+      ];
+      const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/tab-separated-values;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "MangaGlot_AnkiDroid.txt";
+      a.click();
+    }
+
+    function renderPhone() {
+      const root = document.getElementById("phone-root");
+      const chap = MOBILE_CHAPTERS[mState.chap] || MOBILE_CHAPTERS.ja;
+      const bubble = chap.bubbles.find((b) => b.id === mState.bubbleId) || chap.bubbles[0];
+      const tLang = TARGET_LANGUAGES.find((l) => l.code === mState.target) || TARGET_LANGUAGES[0];
+
+      const selWords = bubble.words.filter((_, i) => mState.wordIndices.includes(i));
+      const isPhrase = selWords.length > 1;
+      const surface = selWords.map((w) => w.surface).join(mState.chap === "ko" ? " " : "");
+      const reading = selWords.map((w) => w.reading).join(" · ");
+      const meaning = selWords.length === bubble.words.length
+        ? translateBubble(bubble.id, mState.target)
+        : selWords.map((w) => translateWord(w.surface, mState.target)).join(" + ");
+      const fullSentenceTrans = translateBubble(bubble.id, mState.target);
+      const saveKey = `${surface}_${mState.target}`;
+      const alreadySaved = mState.saved.some((x) => x.key === saveKey);
+
+      root.innerHTML = `
+        <!-- Barra de estado de celular -->
+        <div class="bg-slate-950 px-5 pt-2 pb-1 flex items-center justify-between text-xs text-slate-400 font-semibold">
+          <span>9:41</span>
+          <span class="px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-rose-400 font-bold">📱 MangaGlot App</span>
+          <span>5G 100%</span>
+        </div>
+
+        <!-- Barra de navegación superior de 3 secciones: Lector | Catálogo API | Anki -->
+        <div class="bg-slate-900 px-3 py-2 border-b border-slate-800 space-y-2">
+          <div class="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button data-nav="reader" class="py-1.5 rounded-lg text-xs font-extrabold ${
+              mState.tab === "reader" ? "bg-indigo-600 text-white" : "text-slate-400"
+            }">📖 Lector</button>
+            <button data-nav="api_catalog" class="py-1.5 rounded-lg text-xs font-extrabold ${
+              mState.tab === "api_catalog" ? "bg-rose-600 text-white" : "text-slate-400"
+            }">🌐 Catálogo API</button>
+            <button data-nav="anki" class="py-1.5 rounded-lg text-xs font-extrabold ${
+              mState.tab === "anki" ? "bg-amber-500 text-slate-950" : "text-slate-400"
+            }">⭐ Anki (${mState.saved.length})</button>
+          </div>
+
+          <!-- Barra horizontal deslizable para elegir idioma de traducción -->
+          <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            <span class="text-xs font-bold text-indigo-400 shrink-0">🌍 A:</span>
+            ${TARGET_LANGUAGES.map((l) => `
+              <button data-tlang="${l.code}" class="px-2.5 py-1 rounded-xl text-xs font-bold shrink-0 transition ${
+                mState.target === l.code ? "bg-rose-600 text-white shadow" : "bg-slate-800 text-slate-300"
+              }">${l.flag} ${l.name}</button>
+            `).join("")}
+          </div>
+        </div>
+
+        ${
+          mState.tab === "reader"
+            ? `
+        <!-- Selector rápido de idioma de manga + Selección táctil de frase -->
+        <div class="px-3 pt-2 flex flex-wrap items-center justify-between gap-1.5">
+          <div class="flex items-center gap-1">
+            ${Object.values(MOBILE_CHAPTERS).map((c) => `
+              <button data-chap="${c.id}" class="px-2.5 py-1 rounded-xl text-xs font-bold border ${
+                mState.chap === c.id ? "bg-indigo-600 border-indigo-400 text-white" : "bg-slate-800 border-slate-700 text-slate-300"
+              }">${c.flag} ${c.name}</button>
+            `).join("")}
+          </div>
+
+          <div class="flex items-center gap-1">
+            <button id="m-multi" class="py-1 px-2.5 rounded-xl text-xs font-extrabold border ${
+              mState.multi ? "bg-fuchsia-600 border-fuchsia-300 text-white" : "bg-slate-900 border-slate-700 text-slate-200"
+            }">
+              👆 ${mState.multi ? "Uniendo: ON" : "Unir Palabras"}
+            </button>
+            <button id="m-mode" class="py-1 px-2.5 rounded-xl text-xs font-extrabold bg-emerald-600 text-white">
+              ${mState.mode === "original" ? "🔄 Traducir" : "🈶 Original"}
+            </button>
+          </div>
+        </div>
+
+        ${
+          mState.chap === "api_live" && mState.apiPageUrls.length > 1
+            ? `<div class="px-3 pt-1.5 flex items-center justify-between text-xs">
+                <button id="prev-api-page" class="px-2.5 py-1 rounded-lg bg-slate-800 font-bold">◀ Pág. Anterior</button>
+                <span class="font-bold text-indigo-300">Página ${mState.apiCurrentPageIdx + 1} / ${mState.apiPageUrls.length}</span>
+                <button id="next-api-page" class="px-2.5 py-1 rounded-lg bg-slate-800 font-bold">Pág. Siguiente ▶</button>
+              </div>`
+            : ""
+        }
+
+        <!-- Borde Anime Superior + Lienzo de Manga + Borde Anime Inferior -->
+        <div class="px-2.5 pt-2 pb-1 space-y-1.5">
+          <img src="${TOP_BANNER}" alt="Borde Anime Superior" class="w-full rounded-xl" />
+
+          <div class="p-1.5 rounded-2xl bg-gradient-to-b from-rose-500 via-indigo-500 to-amber-500">
+            <div class="relative w-full rounded-xl overflow-hidden bg-slate-900">
+              <img src="${chap.bg}" alt="Página Manga" class="w-full h-auto block min-h-[380px] object-cover" />
+
+              ${chap.bubbles.map((b, bIdx) => {
+                const active = b.id === bubble.id;
+                const bTrans = translateBubble(b.id, mState.target);
+                return `
+                  <div
+                    style="top:${b.top}; left:${b.left}; width:${b.width};"
+                    class="absolute rounded-2xl p-2 bg-white/96 text-slate-900 shadow-xl ${
+                      active ? "ring-4 ring-rose-500 z-20" : "z-10"
+                    }"
+                  >
+                    <div class="flex items-center justify-between mb-1 pb-0.5 border-b border-slate-200">
+                      <button data-all="${b.id}" class="text-xs font-extrabold px-1.5 py-0.5 rounded bg-slate-900 text-white">
+                        Frase #${bIdx + 1} (Todo)
+                      </button>
+                      <button data-tts="${b.id}" class="text-xs font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-900">
+                        🔊
+                      </button>
+                    </div>
+
+                    ${
+                      mState.mode === "translated"
+                        ? `<div data-all="${b.id}" class="py-1 text-center font-extrabold text-xs text-slate-900">${bTrans}</div>`
+                        : `<div class="flex flex-wrap items-center justify-center gap-1">
+                            ${b.words.map((w, wIdx) => {
+                              const isSel = active && mState.wordIndices.includes(wIdx);
+                              return `
+                                <button
+                                  data-wb="${b.id}"
+                                  data-wi="${wIdx}"
+                                  class="word-chip px-1.5 py-0.5 rounded-lg border flex flex-col items-center ${
+                                    isSel ? "bg-rose-600 text-white border-rose-700 scale-105 shadow" : "bg-slate-100 text-slate-900 border-slate-300"
+                                  }"
+                                >
+                                  <span class="text-xs leading-none ${isSel ? "text-rose-100" : "text-slate-500"}">${w.reading}</span>
+                                  <span class="text-xs font-black">${w.surface}</span>
+                                </button>
+                              `;
+                            }).join("")}
+                          </div>`
+                    }
+                  </div>
+                `;
+              }).join("")}
+            </div>
+          </div>
+
+          <img src="${BOTTOM_BANNER}" alt="Borde Anime Inferior" class="w-full rounded-xl" />
+        </div>`
+            : mState.tab === "api_catalog"
+            ? `
+        <!-- PESTAÑA CATÁLOGO API EN VIVO (MANGADEX API) -->
+        <div class="p-3.5 space-y-3 min-h-[430px] max-h-[470px] overflow-y-auto">
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
+            <div class="text-xs font-extrabold text-rose-400">🌐 Buscador de Manga en Vivo (MangaDex API)</div>
+            <div class="flex gap-1.5">
+              <input
+                id="api-q"
+                type="text"
+                placeholder="Ej. One Piece, Naruto, Solo Leveling..."
+                value="${mState.apiSearchQuery}"
+                class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+              />
+              <button id="btn-api-search" class="px-3 py-2 rounded-xl bg-rose-600 text-white font-black text-xs">
+                Buscar
+              </button>
+            </div>
+            <div class="flex items-center gap-1.5 text-xs">
+              <span class="text-slate-400 font-semibold">Idioma capítulos:</span>
+              ${[
+                { c: "en", l: "🇺🇸 EN" },
+                { c: "es", l: "🇪🇸 ES" },
+                { c: "ja", l: "🇯🇵 JA" },
+                { c: "fr", l: "🇫🇷 FR" },
+                { c: "pt-br", l: "🇧🇷 PT" }
+              ].map((x) => `
+                <button data-apilang="${x.c}" class="px-2 py-0.5 rounded-lg font-bold ${
+                  mState.apiLangFilter === x.c ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-300"
+                }">${x.l}</button>
+              `).join("")}
+            </div>
+          </div>
+
+          ${
+            mState.apiLoading
+              ? `<div class="text-center py-8 text-xs font-bold text-indigo-300">Cargando desde MangaDex API...</div>`
+              : mState.apiError
+              ? `<div class="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs text-amber-200">${mState.apiError}</div>`
+              : ""
+          }
+
+          ${
+            mState.apiSelectedManga && mState.apiChapters.length > 0
+              ? `
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-extrabold text-emerald-400">Capítulos de ${mState.apiSelectedManga.title}:</span>
+                  <button id="btn-back-mangas" class="text-xs text-slate-400 underline">← Volver</button>
+                </div>
+                ${mState.apiChapters.map((ch) => `
+                  <button data-open-ch="${ch.id}" class="w-full text-left bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between">
+                    <div>
+                      <div class="text-xs font-extrabold text-white">Cap. ${ch.chapter} — ${ch.title}</div>
+                      <div class="text-xs text-slate-400">Idioma: ${ch.lang.toUpperCase()} • ${ch.pages} págs.</div>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold">Leer ▶</span>
+                  </button>
+                `).join("")}
+              </div>`
+              : `
+              <div class="grid grid-cols-2 gap-2.5">
+                ${mState.apiMangas.map((m) => `
+                  <button data-pick-manga="${m.id}" class="bg-slate-900 border border-slate-800 rounded-xl p-2 text-left flex flex-col justify-between hover:border-rose-500 transition">
+                    <img src="${m.cover}" alt="${m.title}" class="w-full h-32 object-cover rounded-lg mb-1.5 bg-slate-950" />
+                    <div class="text-xs font-extrabold text-white line-clamp-2">${m.title}</div>
+                    <span class="text-xs text-rose-400 font-bold mt-1">Ver capítulos →</span>
+                  </button>
+                `).join("")}
+              </div>`
+          }
+        </div>`
+            : `
+        <!-- Pestaña AnkiDroid en el Celular -->
+        <div class="p-3.5 space-y-3 min-h-[420px]">
+          <button id="m-export-anki" ${mState.saved.length === 0 ? "disabled" : ""} class="w-full py-3 rounded-xl bg-amber-500 disabled:opacity-40 text-slate-950 font-black text-xs shadow">
+            📥 Descargar Mazo para AnkiDroid (${mState.saved.length} tarjetas)
+          </button>
+          ${
+            mState.saved.length === 0
+              ? `<div class="text-center py-12 text-xs text-slate-400">
+                  Toca una palabra o une varias palabras en el Lector y pulsa <b>"Guardar en Anki"</b>.
+                </div>`
+              : mState.saved.map((c, idx) => `
+                  <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-1">
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs font-bold text-indigo-400">${c.type} → ${c.lang}</span>
+                      <button data-del="${idx}" class="text-xs text-rose-400 font-bold">✕</button>
+                    </div>
+                    <div class="text-xs text-rose-400">${c.reading}</div>
+                    <div class="text-base font-black">${c.surface}</div>
+                    <div class="text-sm font-extrabold text-emerald-400">${c.meaning}</div>
+                    <div class="text-xs text-slate-400 pt-1 border-t border-slate-800">${c.sentence}</div>
+                  </div>
+                `).join("")
+          }
+        </div>`
+        }
+
+        <!-- PANEL INFERIOR DEL CELULAR -->
+        <div class="bg-slate-900 border-t-2 border-rose-500 p-3.5 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold">
+                  ${isPhrase ? `Frase (${selWords.length} palabras)` : "Palabra"}
+                </span>
+                <span class="text-xs text-rose-400 font-bold truncate">${reading}</span>
+              </div>
+              <div class="text-lg font-black text-white truncate mt-0.5">${surface}</div>
+            </div>
+            <button id="m-speak-sel" class="px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs shrink-0">
+              🔊 Pronunciar
+            </button>
+          </div>
+
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+            <div class="text-xs font-bold text-emerald-400">
+              ${tLang.flag} ${tLang.name}: <span class="text-sm font-black text-white ml-1">${meaning}</span>
+            </div>
+            <div class="text-xs text-amber-300 mt-0.5 truncate">
+              Globo: “${fullSentenceTrans}”
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 pt-0.5">
+            <button id="m-save" class="flex-1 py-2.5 px-3 rounded-xl font-black text-xs ${
+              alreadySaved ? "bg-amber-500 text-slate-950" : "bg-rose-600 text-white"
+            }">
+              ${alreadySaved ? "★ Guardada en Anki" : `☆ Guardar ${isPhrase ? "Frase" : "Palabra"} en Anki`}
+            </button>
+          </div>
+        </div>
+      `;
+
+      // Eventos
+      document.querySelectorAll("[data-nav]").forEach((b) => {
+        b.onclick = () => {
+          mState.tab = b.getAttribute("data-nav");
+          if (mState.tab === "api_catalog" && mState.apiMangas.length === 0) {
+            searchMangaDexApi("");
+          } else {
+            renderPhone();
+          }
+        };
+      });
+
+      document.querySelectorAll("[data-chap]").forEach((b) => {
+        b.onclick = () => {
+          mState.chap = b.getAttribute("data-chap");
+          mState.bubbleId = MOBILE_CHAPTERS[mState.chap].bubbles[0].id;
+          mState.wordIndices = [0];
+          renderPhone();
+        };
+      });
+
+      document.querySelectorAll("[data-tlang]").forEach((b) => {
+        b.onclick = () => {
+          mState.target = b.getAttribute("data-tlang");
+          renderPhone();
+        };
+      });
+
+      const multiBtn = document.getElementById("m-multi");
+      if (multiBtn) multiBtn.onclick = () => { mState.multi = !mState.multi; renderPhone(); };
+
+      const modeBtn = document.getElementById("m-mode");
+      if (modeBtn) modeBtn.onclick = () => { mState.mode = mState.mode === "original" ? "translated" : "original"; renderPhone(); };
+
+      document.querySelectorAll("[data-wb]").forEach((b) => {
+        b.onclick = (e) => {
+          e.stopPropagation();
+          const bId = b.getAttribute("data-wb");
+          const wIdx = parseInt(b.getAttribute("data-wi"), 10);
+          if (mState.bubbleId !== bId) {
+            mState.bubbleId = bId;
+            mState.wordIndices = [wIdx];
+          } else if (mState.multi) {
+            const exists = mState.wordIndices.includes(wIdx);
+            const next = exists ? mState.wordIndices.filter((x) => x !== wIdx) : [...mState.wordIndices, wIdx].sort((a, c) => a - c);
+            mState.wordIndices = next.length ? next : [wIdx];
+          } else {
+            mState.wordIndices = [wIdx];
+          }
+          renderPhone();
+        };
+      });
+
+      document.querySelectorAll("[data-all]").forEach((b) => {
+        b.onclick = () => {
+          const bId = b.getAttribute("data-all");
+          const targetB = chap.bubbles.find((x) => x.id === bId);
+          if (targetB) {
+            mState.bubbleId = bId;
+            mState.wordIndices = targetB.words.map((_, i) => i);
+            renderPhone();
+          }
+        };
+      });
+
+      document.querySelectorAll("[data-tts]").forEach((b) => {
+        b.onclick = () => {
+          const bId = b.getAttribute("data-tts");
+          const targetB = chap.bubbles.find((x) => x.id === bId);
+          if (targetB) speakMobile(targetB.original_text, chap.tts);
+        };
+      });
+
+      document.getElementById("m-speak-sel").onclick = () => speakMobile(surface, chap.tts);
+
+      document.getElementById("m-save").onclick = () => {
+        if (alreadySaved) {
+          mState.saved = mState.saved.filter((x) => x.key !== saveKey);
+        } else {
+          mState.saved.unshift({
+            key: saveKey,
+            type: isPhrase ? `Frase (${selWords.length} palabras)` : "Palabra",
+            surface,
+            reading,
+            meaning,
+            lang: `${tLang.flag} ${tLang.name}`,
+            sentence: bubble.original_text,
+            sentenceTrans: fullSentenceTrans
+          });
+        }
+        renderPhone();
+      };
+
+      const expBtn = document.getElementById("m-export-anki");
+      if (expBtn) expBtn.onclick = exportMobileAnki;
+
+      document.querySelectorAll("[data-del]").forEach((b) => {
+        b.onclick = () => {
+          mState.saved.splice(parseInt(b.getAttribute("data-del"), 10), 1);
+          renderPhone();
+        };
+      });
+
+      // Eventos del Catálogo API
+      const qInput = document.getElementById("api-q");
+      if (qInput) {
+        qInput.oninput = (e) => { mState.apiSearchQuery = e.target.value; };
+      }
+      const searchBtn = document.getElementById("btn-api-search");
+      if (searchBtn) {
+        searchBtn.onclick = () => searchMangaDexApi(mState.apiSearchQuery);
+      }
+      document.querySelectorAll("[data-apilang]").forEach((b) => {
+        b.onclick = () => {
+          mState.apiLangFilter = b.getAttribute("data-apilang");
+          if (mState.apiSelectedManga) loadMangaChaptersApi(mState.apiSelectedManga);
+          else renderPhone();
+        };
+      });
+      document.querySelectorAll("[data-pick-manga]").forEach((b) => {
+        b.onclick = () => {
+          const id = b.getAttribute("data-pick-manga");
+          const m = mState.apiMangas.find((x) => x.id === id);
+          if (m) loadMangaChaptersApi(m);
+        };
+      });
+      const backBtn = document.getElementById("btn-back-mangas");
+      if (backBtn) {
+        backBtn.onclick = () => {
+          mState.apiSelectedManga = null;
+          mState.apiChapters = [];
+          renderPhone();
+        };
+      }
+      document.querySelectorAll("[data-open-ch]").forEach((b) => {
+        b.onclick = () => {
+          const id = b.getAttribute("data-open-ch");
+          const ch = mState.apiChapters.find((x) => x.id === id);
+          if (ch) openChapterFromApi(ch);
+        };
+      });
+      const prevPage = document.getElementById("prev-api-page");
+      if (prevPage) {
+        prevPage.onclick = () => {
+          if (mState.apiCurrentPageIdx > 0) {
+            mState.apiCurrentPageIdx--;
+            MOBILE_CHAPTERS.api_live.bg = mState.apiPageUrls[mState.apiCurrentPageIdx];
+            renderPhone();
+          }
+        };
+      }
+      const nextPage = document.getElementById("next-api-page");
+      if (nextPage) {
+        nextPage.onclick = () => {
+          if (mState.apiCurrentPageIdx < mState.apiPageUrls.length - 1) {
+            mState.apiCurrentPageIdx++;
+            MOBILE_CHAPTERS.api_live.bg = mState.apiPageUrls[mState.apiCurrentPageIdx];
+            renderPhone();
+          }
+        };
+      }
+    }
+
+    renderPhone();
+  </script>
+</body>
+</html>

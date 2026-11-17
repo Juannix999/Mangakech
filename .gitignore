@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node and Expo
+node_modules/
+.expo/
+dist/
+build/
+
+# Cordova-generated Android output
+mangaglot_apk/platforms/
+mangaglot_apk/plugins/
+mangaglot_apk/node_modules/
+
+# Environment and editor files
+.env
+.env.*
+.DS_Store
+.vscode/

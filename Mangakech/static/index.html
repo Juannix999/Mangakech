@@ -1,0 +1,1796 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MangaGlot — Aprende Idiomas Leyendo Manga + Anki</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@500;700;900&family=Noto+Sans+KR:wght@500;700&family=Noto+Sans+SC:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans JP', 'Noto Sans KR', 'Noto Sans SC', sans-serif;
+      background-color: #070a12;
+      color: #f1f5f9;
+      overflow-x: hidden;
+    }
+    .manga-bubble {
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+      touch-action: none;
+    }
+    .manga-bubble:hover {
+      z-index: 30;
+    }
+    .word-chip {
+      transition: all 0.14s ease;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .bottom-sheet-enter {
+      animation: slideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .anime-border-glow {
+      box-shadow: 0 0 35px rgba(244, 63, 94, 0.22), 0 0 60px rgba(99, 102, 241, 0.18);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // ============================================================================
+    // Idiomas disponibles para traducir cualquier palabra o frase seleccionada
+    // ============================================================================
+    const TARGET_LANGUAGES = [
+      { code: "es", name: "Español", flag: "🇪🇸" },
+      { code: "en", name: "Inglés (English)", flag: "🇺🇸" },
+      { code: "fr", name: "Francés (Français)", flag: "🇫🇷" },
+      { code: "pt", name: "Portugués (Português)", flag: "🇧🇷" },
+      { code: "de", name: "Alemán (Deutsch)", flag: "🇩🇪" },
+      { code: "it", name: "Italiano", flag: "🇮🇹" },
+      { code: "ja", name: "Japonés (日本語)", flag: "🇯🇵" },
+      { code: "ko", name: "Coreano (한국어)", flag: "🇰🇷" },
+      { code: "zh-CN", name: "Chino (中文)", flag: "🇨🇳" },
+      { code: "ru", name: "Ruso (Русский)", flag: "🇷🇺" }
+    ];
+
+    // ============================================================================
+    // Ilustraciones de Anime para los Bordes Laterales y Superiores del Manga
+    // ============================================================================
+    const createAnimeBorderCharacterSvg = (variant) => {
+      const configs = {
+        leftTop: {
+          bg1: "#be123c", bg2: "#1e1b4b", hair: "#f43f5e", eyes: "#38bdf8",
+          badge: "侍 SAMURAI", kanji: "剣", quote: "「諦めない！」"
+        },
+        leftBottom: {
+          bg1: "#4338ca", bg2: "#0f172a", hair: "#a855f7", eyes: "#f43f5e",
+          badge: "魔法 MAGE", kanji: "夢", quote: "「光を探して」"
+        },
+        rightTop: {
+          bg1: "#0f766e", bg2: "#090d16", hair: "#2dd4bf", eyes: "#fbbf24",
+          badge: "忍 NINJA", kanji: "風", quote: "「行くぞ！」"
+        },
+        rightBottom: {
+          bg1: "#b45309", bg2: "#1e1b4b", hair: "#f59e0b", eyes: "#10b981",
+          badge: "竜 DRAGON", kanji: "炎", quote: "「力を合わせて」"
+        }
+      };
+      const c = configs[variant] || configs.leftTop;
+
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 420" width="240" height="420">
+        <defs>
+          <linearGradient id="g_${variant}" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="${c.bg1}"/>
+            <stop offset="100%" stop-color="${c.bg2}"/>
+          </linearGradient>
+          <pattern id="dots_${variant}" width="10" height="10" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1.3" fill="#ffffff" fill-opacity="0.12"/>
+          </pattern>
+        </defs>
+        <rect width="240" height="420" rx="18" fill="url(#g_${variant})" stroke="#334155" stroke-width="4"/>
+        <rect width="240" height="420" rx="18" fill="url(#dots_${variant})"/>
+        <!-- Kanji decorativo gigante de fondo -->
+        <text x="125" y="165" fill="#ffffff" fill-opacity="0.10" font-size="145" font-weight="900">${c.kanji}</text>
+        <!-- Líneas de velocidad anime -->
+        <line x1="0" y1="50" x2="240" y2="120" stroke="#ffffff" stroke-opacity="0.15" stroke-width="2"/>
+        <line x1="0" y1="320" x2="240" y2="260" stroke="#ffffff" stroke-opacity="0.15" stroke-width="2"/>
+        <!-- Halo detrás del personaje -->
+        <circle cx="120" cy="205" r="78" fill="none" stroke="${c.hair}" stroke-width="3" stroke-dasharray="10 6" opacity="0.65"/>
+        <!-- Cabello trasero anime -->
+        <path d="M45,230 L28,150 L72,115 L120,90 L168,115 L212,150 L195,230 Z" fill="${c.hair}" stroke="#090d16" stroke-width="4"/>
+        <!-- Rostro anime -->
+        <path d="M74,165 Q74,248 120,262 Q166,248 166,165 Z" fill="#fde68a" stroke="#090d16" stroke-width="4"/>
+        <!-- Flequillo puntiagudo anime -->
+        <path d="M62,175 Q80,110 120,115 Q160,110 178,175 L156,145 L138,180 L120,142 L102,180 L84,145 Z" fill="${c.hair}" stroke="#090d16" stroke-width="3.5"/>
+        <!-- Ojos expresivos estilo anime -->
+        <ellipse cx="98" cy="198" rx="10" ry="13" fill="#090d16"/>
+        <ellipse cx="98" cy="200" rx="7" ry="9" fill="${c.eyes}"/>
+        <circle cx="94" cy="193" r="3.5" fill="#ffffff"/>
+        <ellipse cx="142" cy="198" rx="10" ry="13" fill="#090d16"/>
+        <ellipse cx="142" cy="200" rx="7" ry="9" fill="${c.eyes}"/>
+        <circle cx="138" cy="193" r="3.5" fill="#ffffff"/>
+        <!-- Cejas y sonrisa -->
+        <path d="M84,180 L110,184" stroke="#090d16" stroke-width="3" stroke-linecap="round"/>
+        <path d="M156,180 L130,184" stroke="#090d16" stroke-width="3" stroke-linecap="round"/>
+        <path d="M112,234 Q120,243 129,234" fill="none" stroke="#090d16" stroke-width="3" stroke-linecap="round"/>
+        <!-- Traje / Cuello alto -->
+        <path d="M52,380 L78,275 L162,275 L188,380 Z" fill="#0f172a" stroke="${c.hair}" stroke-width="3.5"/>
+        <path d="M98,275 L120,325 L142,275" fill="none" stroke="${c.eyes}" stroke-width="3"/>
+        <!-- Pétalos / Destellos -->
+        <circle cx="42" cy="95" r="5" fill="${c.hair}" opacity="0.8"/>
+        <circle cx="198" cy="115" r="4" fill="${c.eyes}" opacity="0.9"/>
+        <circle cx="52" cy="310" r="6" fill="${c.eyes}" opacity="0.7"/>
+        <!-- Etiqueta inferior -->
+        <rect x="20" y="345" width="200" height="52" rx="10" fill="#090d16" fill-opacity="0.88" stroke="${c.hair}" stroke-width="2"/>
+        <text x="120" y="366" text-anchor="middle" fill="${c.eyes}" font-size="12" font-weight="900" letter-spacing="1.5">${c.badge}</text>
+        <text x="120" y="386" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700">${c.quote}</text>
+      </svg>`;
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    };
+
+    // ============================================================================
+    // Ilustraciones de la Página Principal de Manga
+    // ============================================================================
+    const createMangaSvgDataUri = (langCode) => {
+      const themes = {
+        ja: {
+          bg1: "#1e293b", bg2: "#0f172a", accent: "#f43f5e",
+          title: "東京の朝 (Mañana en Tokio)",
+          sfx1: "ドキドキ", sfx2: "ザワザワ"
+        },
+        ko: {
+          bg1: "#1e1b4b", bg2: "#090d16", accent: "#8b5cf6",
+          title: "서울의 밤 (Noche en Seúl)",
+          sfx1: "두근두근", sfx2: "스르륵"
+        },
+        zh: {
+          bg1: "#064e3b", bg2: "#022c22", accent: "#10b981",
+          title: "武侠传说 (Leyenda Marcial)",
+          sfx1: "轰隆！", sfx2: "嗖！"
+        },
+        en: {
+          bg1: "#31102f", bg2: "#140718", accent: "#f59e0b",
+          title: "Cyber Detective #01",
+          sfx1: "VROOM!", sfx2: "BEEP!"
+        }
+      };
+      const t = themes[langCode] || themes.ja;
+
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1120" width="800" height="1120">
+        <defs>
+          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${t.bg1}"/>
+            <stop offset="100%" stop-color="${t.bg2}"/>
+          </linearGradient>
+          <pattern id="screentone" width="8" height="8" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1.2" fill="#94a3b8" fill-opacity="0.18"/>
+          </pattern>
+        </defs>
+        <rect width="800" height="1120" fill="#e2e8f0"/>
+
+        <!-- VIÑETA 1 -->
+        <g transform="translate(28, 28)">
+          <rect width="744" height="330" fill="url(#sky)" stroke="#0f172a" stroke-width="6" rx="4"/>
+          <rect width="744" height="330" fill="url(#screentone)"/>
+          <g stroke="#ffffff" stroke-opacity="0.12" stroke-width="2">
+            <line x1="0" y1="20" x2="320" y2="160"/>
+            <line x1="744" y1="10" x2="400" y2="160"/>
+            <line x1="744" y1="290" x2="420" y2="180"/>
+            <line x1="0" y1="300" x2="310" y2="180"/>
+          </g>
+          <rect x="40" y="130" width="75" height="200" fill="#090d16" opacity="0.7"/>
+          <rect x="130" y="95" width="95" height="235" fill="#090d16" opacity="0.85"/>
+          <rect x="240" y="160" width="70" height="170" fill="#090d16" opacity="0.65"/>
+          <circle cx="385" cy="175" r="56" fill="#fde68a" stroke="#0f172a" stroke-width="4"/>
+          <path d="M325,165 Q385,90 445,165 Q430,120 385,125 Q345,120 325,165 Z" fill="#1e293b" stroke="#0f172a" stroke-width="3"/>
+          <ellipse cx="366" cy="178" rx="8" ry="11" fill="#0f172a"/>
+          <circle cx="363" cy="173" r="3" fill="#ffffff"/>
+          <ellipse cx="406" cy="178" rx="8" ry="11" fill="#0f172a"/>
+          <circle cx="403" cy="173" r="3" fill="#ffffff"/>
+          <path d="M376,204 Q386,214 396,204" fill="none" stroke="#0f172a" stroke-width="3" stroke-linecap="round"/>
+          <path d="M315,330 L345,235 L425,235 L455,330 Z" fill="${t.accent}" stroke="#0f172a" stroke-width="4"/>
+          <text x="55" y="75" fill="${t.accent}" font-size="34" font-weight="900" opacity="0.85" transform="rotate(-8 55 75)">${t.sfx1}</text>
+        </g>
+
+        <!-- VIÑETA 2 -->
+        <g transform="translate(28, 380)">
+          <rect width="360" height="340" fill="#1e293b" stroke="#0f172a" stroke-width="6" rx="4"/>
+          <rect width="360" height="340" fill="url(#screentone)"/>
+          <circle cx="135" cy="205" r="52" fill="#fed7aa" stroke="#0f172a" stroke-width="4"/>
+          <path d="M78,195 Q135,115 192,195 Z" fill="#334155" stroke="#0f172a" stroke-width="4"/>
+          <ellipse cx="118" cy="205" rx="7" ry="9" fill="#0f172a"/>
+          <ellipse cx="152" cy="205" rx="7" ry="9" fill="#0f172a"/>
+          <path d="M126,228 Q135,235 145,228" fill="none" stroke="#0f172a" stroke-width="3"/>
+          <path d="M75,340 L100,257 L170,257 L195,340 Z" fill="#0284c7" stroke="#0f172a" stroke-width="4"/>
+        </g>
+
+        <!-- VIÑETA 3 -->
+        <g transform="translate(412, 380)">
+          <rect width="360" height="340" fill="#0f172a" stroke="#0f172a" stroke-width="6" rx="4"/>
+          <circle cx="180" cy="215" r="110" fill="none" stroke="${t.accent}" stroke-width="2" stroke-dasharray="8 6" opacity="0.4"/>
+          <text x="230" y="310" fill="#ffffff" font-size="26" font-weight="800" opacity="0.45">${t.sfx2}</text>
+          <rect x="90" y="210" width="160" height="95" rx="12" fill="#334155" stroke="#94a3b8" stroke-width="3"/>
+          <circle cx="170" cy="257" r="22" fill="${t.accent}"/>
+        </g>
+
+        <!-- VIÑETA 4 -->
+        <g transform="translate(28, 742)">
+          <rect width="744" height="350" fill="url(#sky)" stroke="#0f172a" stroke-width="6" rx="4"/>
+          <rect width="744" height="350" fill="url(#screentone)"/>
+          <circle cx="230" cy="220" r="48" fill="#fde68a" stroke="#0f172a" stroke-width="4"/>
+          <path d="M170,350 L195,268 L265,268 L290,350 Z" fill="${t.accent}" stroke="#0f172a" stroke-width="4"/>
+          <circle cx="535" cy="220" r="48" fill="#fed7aa" stroke="#0f172a" stroke-width="4"/>
+          <path d="M475,350 L500,268 L570,268 L595,350 Z" fill="#0284c7" stroke="#0f172a" stroke-width="4"/>
+          <text x="26" y="328" fill="#94a3b8" font-size="16" font-weight="700">${t.title}</text>
+        </g>
+      </svg>`;
+
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    };
+
+    const ANIME_BORDERS = {
+      leftTop: createAnimeBorderCharacterSvg("leftTop"),
+      leftBottom: createAnimeBorderCharacterSvg("leftBottom"),
+      rightTop: createAnimeBorderCharacterSvg("rightTop"),
+      rightBottom: createAnimeBorderCharacterSvg("rightBottom")
+    };
+
+    // ============================================================================
+    // Capítulos de Muestra Multilingües
+    // ============================================================================
+    const DEMO_CHAPTERS = {
+      ja: {
+        id: "demo-ja",
+        title: "Capítulo 1: Encuentro en Shibuya (Japonés)",
+        flag: "🇯🇵",
+        langName: "Japonés (Manga)",
+        ttsLang: "ja-JP",
+        source_language: "ja",
+        target_language: "es",
+        image_url: createMangaSvgDataUri("ja"),
+        bubbles: [
+          {
+            id: "ja-b1",
+            box: { x: 0.58, y: 0.04, w: 0.37, h: 0.23 },
+            original_text: "今日は本当にいい天気ですね！",
+            reading_full: "Kyō wa hontō ni ii tenki desu ne!",
+            translated_text: "¡Hoy hace un tiempo realmente bueno, ¿verdad?!",
+            words: [
+              { surface: "今日", reading: "きょう (kyō)", base_form: "今日", pos: "Sustantivo temporal", meaning: "hoy, este día", grammar_note: "Lectura especial (jukujikun) 'kyō'." },
+              { surface: "は", reading: "wa", base_form: "は", pos: "Partícula de tema", meaning: "en cuanto a", grammar_note: "Marca el tema de la oración; se pronuncia 'wa'." },
+              { surface: "本当に", reading: "ほんとうに (hontō ni)", base_form: "本当", pos: "Adverbio", meaning: "realmente, de verdad", grammar_note: "Añadir に convierte el sustantivo 本当 en adverbio." },
+              { surface: "いい", reading: "ii", base_form: "良い (yoi)", pos: "Adjetivo -i", meaning: "bueno, agradable", grammar_note: "Al conjugarse usa la raíz 'yo-' (ej. yokatta)." },
+              { surface: "天気", reading: "てんき (tenki)", base_form: "天気", pos: "Sustantivo", meaning: "clima, buen tiempo", grammar_note: "天 (cielo) + 気 (energía/espíritu)." },
+              { surface: "ですね", reading: "desu ne", base_form: "だ + ね", pos: "Expresión cortés", meaning: "¿verdad?, ¿no crees?", grammar_note: "Expresa acuerdo o busca confirmación del oyente." }
+            ]
+          },
+          {
+            id: "ja-b2",
+            box: { x: 0.21, y: 0.36, w: 0.25, h: 0.22 },
+            original_text: "その本は日本語ですか？",
+            reading_full: "Sono hon wa nihongo desu ka?",
+            translated_text: "¿Ese libro está en japonés?",
+            words: [
+              { surface: "その", reading: "sono", base_form: "その", pos: "Demostrativo", meaning: "ese / esa", grammar_note: "Acompaña siempre a un sustantivo cercano al oyente." },
+              { surface: "本", reading: "ほん (hon)", base_form: "本", pos: "Sustantivo", meaning: "libro", grammar_note: "Kanji fundamental JLPT N5." },
+              { surface: "は", reading: "wa", base_form: "は", pos: "Partícula de tema", meaning: "respecto a", grammar_note: "Indica que hablamos de 'ese libro'." },
+              { surface: "日本語", reading: "にほんご (nihongo)", base_form: "日本語", pos: "Sustantivo", meaning: "idioma japonés", grammar_note: "日本 (Japón) + 語 (idioma)." },
+              { surface: "ですか", reading: "desu ka", base_form: "です + か", pos: "Pregunta cortés", meaning: "¿es...?", grammar_note: "La partícula か convierte la oración en interrogativa." }
+            ]
+          },
+          {
+            id: "ja-b3",
+            box: { x: 0.54, y: 0.36, w: 0.40, h: 0.22 },
+            original_text: "はい、毎日少しずつ読んでいます。",
+            reading_full: "Hai, mainichi sukoshizutsu yonde imasu.",
+            translated_text: "Sí, lo estoy leyendo poco a poco todos los días.",
+            words: [
+              { surface: "はい", reading: "hai", base_form: "はい", pos: "Interjección", meaning: "sí, claro", grammar_note: "Afirmación cortés." },
+              { surface: "毎日", reading: "まいにち (mainichi)", base_form: "毎日", pos: "Sustantivo / Adverbio", meaning: "todos los días", grammar_note: "毎 (cada) + 日 (día)." },
+              { surface: "少しずつ", reading: "すこしずつ (sukoshizutsu)", base_form: "少し + ずつ", pos: "Adverbio", meaning: "poco a poco", grammar_note: "ずつ expresa distribución gradual." },
+              { surface: "読んで", reading: "よんで (yonde)", base_form: "読む (yomu)", pos: "Verbo (Forma -te)", meaning: "leyendo", grammar_note: "Forma -te de 読む (leer)." },
+              { surface: "います", reading: "imasu", base_form: "いる (iru)", pos: "Auxiliar continuo", meaning: "estoy haciendo", grammar_note: "Forma -te + います indica acción habitual o en curso." }
+            ]
+          },
+          {
+            id: "ja-b4",
+            box: { x: 0.30, y: 0.68, w: 0.40, h: 0.21 },
+            original_text: "一緒に新しい言葉を勉強しよう！",
+            reading_full: "Issho ni atarashii kotoba o benkyō shiyō!",
+            translated_text: "¡Estudiemos nuevas palabras juntos!",
+            words: [
+              { surface: "一緒に", reading: "いっしょに (issho ni)", base_form: "一緒", pos: "Adverbio", meaning: "juntos", grammar_note: "Muy usado para invitar a hacer algo en grupo." },
+              { surface: "新しい", reading: "あたらしい (atarashii)", base_form: "新しい", pos: "Adjetivo -i", meaning: "nuevo, nuevas", grammar_note: "Califica directamente a 言葉." },
+              { surface: "言葉", reading: "ことば (kotoba)", base_form: "言葉", pos: "Sustantivo", meaning: "palabras, vocabulario", grammar_note: "Puede significar palabra, frase o idioma." },
+              { surface: "を", reading: "o (wo)", base_form: "を", pos: "Partícula de objeto", meaning: "(objeto directo)", grammar_note: "Marca lo que se estudia." },
+              { surface: "勉強しよう", reading: "べんきょうしよう (benkyō shiyō)", base_form: "勉強する", pos: "Verbo volitivo", meaning: "¡estudiemos!", grammar_note: "Forma volitiva ('hagamos') de 勉強する." }
+            ]
+          }
+        ]
+      },
+      ko: {
+        id: "demo-ko",
+        title: "Capítulo 1: Misterio en Seúl (Coreano / Manhwa)",
+        flag: "🇰🇷",
+        langName: "Coreano (Manhwa)",
+        ttsLang: "ko-KR",
+        source_language: "ko",
+        target_language: "es",
+        image_url: createMangaSvgDataUri("ko"),
+        bubbles: [
+          {
+            id: "ko-b1",
+            box: { x: 0.58, y: 0.05, w: 0.36, h: 0.21 },
+            original_text: "오늘 날씨가 정말 좋네요!",
+            reading_full: "Oneul nalssiga jeongmal jonneyo!",
+            translated_text: "¡El clima de hoy está realmente bueno!",
+            words: [
+              { surface: "오늘", reading: "oneul", base_form: "오늘", pos: "Sustantivo", meaning: "hoy", grammar_note: "Indica el día actual." },
+              { surface: "날씨가", reading: "nalssi-ga", base_form: "날씨 + 가", pos: "Sustantivo + Partícula", meaning: "el clima", grammar_note: "날씨 (clima) + 가 (partícula de sujeto)." },
+              { surface: "정말", reading: "jeongmal", base_form: "정말", pos: "Adverbio", meaning: "realmente, de verdad", grammar_note: "Enfatiza el adjetivo siguiente." },
+              { surface: "좋네요", reading: "jonneyo", base_form: "좋다 (jota)", pos: "Adjetivo", meaning: "¡está muy bueno!", grammar_note: "La terminación -네요 expresa admiración al notar algo." }
+            ]
+          },
+          {
+            id: "ko-b2",
+            box: { x: 0.54, y: 0.36, w: 0.39, h: 0.20 },
+            original_text: "이 만화는 한국어로 되어 있어요.",
+            reading_full: "I manhwaneun hangugeoro doeeo isseoyo.",
+            translated_text: "Este manhwa está en idioma coreano.",
+            words: [
+              { surface: "이", reading: "i", base_form: "이", pos: "Determinante", meaning: "este", grammar_note: "Indica cercanía al hablante." },
+              { surface: "만화는", reading: "manhwa-neun", base_form: "만화 + 는", pos: "Sustantivo + Tema", meaning: "este manhwa", grammar_note: "만화 (cómic) + 는 (partícula de tema)." },
+              { surface: "한국어로", reading: "hangugeo-ro", base_form: "한국어 + 로", pos: "Sustantivo + Partícula", meaning: "en coreano", grammar_note: "한국어 (idioma coreano) + 로 (medio/idioma)." },
+              { surface: "되어 있어요", reading: "doeeo isseoyo", base_form: "되다 + 있다", pos: "Verbo estado", meaning: "está hecho / escrito", grammar_note: "Indica el estado en que se encuentra." }
+            ]
+          },
+          {
+            id: "ko-b3",
+            box: { x: 0.30, y: 0.68, w: 0.40, h: 0.20 },
+            original_text: "우리 같이 천천히 읽어 볼까요?",
+            reading_full: "Uri gachi cheoncheonhi ilgeo bolkkayo?",
+            translated_text: "¿Intentamos leerlo juntos poco a poco?",
+            words: [
+              { surface: "우리", reading: "uri", base_form: "우리", pos: "Pronombre", meaning: "nosotros", grammar_note: "Uso inclusivo afectivo muy común en coreano." },
+              { surface: "같이", reading: "gachi", base_form: "같이", pos: "Adverbio", meaning: "juntos", grammar_note: "Se pronuncia [gachi]." },
+              { surface: "천천히", reading: "cheoncheonhi", base_form: "천천히", pos: "Adverbio", meaning: "despacio, poco a poco", grammar_note: "Modifica al verbo leer." },
+              { surface: "읽어", reading: "ilgeo", base_form: "읽다 (ikda)", pos: "Verbo", meaning: "leer", grammar_note: "Forma conectiva de 읽다." },
+              { surface: "볼까요?", reading: "bolkkayo?", base_form: "보다 + ㄹ까요", pos: "Auxiliar", meaning: "¿probamos a...?", grammar_note: "Expresa sugerencia amable para intentar algo." }
+            ]
+          }
+        ]
+      },
+      zh: {
+        id: "demo-zh",
+        title: "Capítulo 1: El Pergamino Secreto (Chino / Manhua)",
+        flag: "🇨🇳",
+        langName: "Chino (Manhua)",
+        ttsLang: "zh-CN",
+        source_language: "zh",
+        target_language: "es",
+        image_url: createMangaSvgDataUri("zh"),
+        bubbles: [
+          {
+            id: "zh-b1",
+            box: { x: 0.58, y: 0.05, w: 0.36, h: 0.21 },
+            original_text: "今天天气真好啊！",
+            reading_full: "Jīntiān tiānqì zhēn hǎo a!",
+            translated_text: "¡El clima de hoy es realmente bueno!",
+            words: [
+              { surface: "今天", reading: "jīntiān", base_form: "今天", pos: "Sustantivo", meaning: "hoy", grammar_note: "今 (ahora/presente) + 天 (día)." },
+              { surface: "天气", reading: "tiānqì", base_form: "天气", pos: "Sustantivo", meaning: "clima, tiempo", grammar_note: "Vocabulario esencial HSK 1." },
+              { surface: "真", reading: "zhēn", base_form: "真", pos: "Adverbio", meaning: "realmente, verdaderamente", grammar_note: "Antecede a adjetivos en exclamaciones." },
+              { surface: "好", reading: "hǎo", base_form: "好", pos: "Adjetivo", meaning: "bueno", grammar_note: "Tercer tono." },
+              { surface: "啊", reading: "a", base_form: "啊", pos: "Partícula modal", meaning: "(énfasis exclamativo)", grammar_note: "Da naturalidad y entusiasmo a la oración." }
+            ]
+          },
+          {
+            id: "zh-b2",
+            box: { x: 0.30, y: 0.68, w: 0.42, h: 0.20 },
+            original_text: "我们一起看漫画学中文吧！",
+            reading_full: "Wǒmen yīqǐ kàn mànhuà xué zhōngwén ba!",
+            translated_text: "¡Leamos cómics y aprendamos chino juntos!",
+            words: [
+              { surface: "我们", reading: "wǒmen", base_form: "我们", pos: "Pronombre", meaning: "nosotros", grammar_note: "Plural de 我 (yo)." },
+              { surface: "一起", reading: "yīqǐ", base_form: "一起", pos: "Adverbio", meaning: "juntos", grammar_note: "Se coloca antes del verbo." },
+              { surface: "看", reading: "kàn", base_form: "看", pos: "Verbo", meaning: "leer / mirar", grammar_note: "Usado para leer libros y cómics." },
+              { surface: "漫画", reading: "mànhuà", base_form: "漫画", pos: "Sustantivo", meaning: "cómic, manhua, manga", grammar_note: "Origen del término manga." },
+              { surface: "学", reading: "xué", base_form: "学习", pos: "Verbo", meaning: "aprender, estudiar", grammar_note: "Segundo tono." },
+              { surface: "中文", reading: "zhōngwén", base_form: "中文", pos: "Sustantivo", meaning: "idioma chino", grammar_note: "Referencia general al idioma chino." },
+              { surface: "吧", reading: "ba", base_form: "吧", pos: "Partícula", meaning: "¡hagámoslo!", grammar_note: "Indica sugerencia o invitación." }
+            ]
+          }
+        ]
+      },
+      en: {
+        id: "demo-en",
+        title: "Chapter 1: Neon Rain (Inglés)",
+        flag: "🇺🇸",
+        langName: "Inglés (Comic)",
+        ttsLang: "en-US",
+        source_language: "en",
+        target_language: "es",
+        image_url: createMangaSvgDataUri("en"),
+        bubbles: [
+          {
+            id: "en-b1",
+            box: { x: 0.56, y: 0.05, w: 0.38, h: 0.21 },
+            original_text: "We need to figure out what happened here.",
+            reading_full: "/wi niːd tə ˈfɪɡjər aʊt wʌt ˈhæpənd hɪr/",
+            translated_text: "Necesitamos averiguar qué pasó aquí.",
+            words: [
+              { surface: "We", reading: "/wi/", base_form: "we", pos: "Pronombre", meaning: "nosotros", grammar_note: "Sujeto plural." },
+              { surface: "need to", reading: "/niːd tə/", base_form: "need", pos: "Verbo", meaning: "necesitamos", grammar_note: "Expresa obligación o necesidad." },
+              { surface: "figure out", reading: "/ˈfɪɡjər aʊt/", base_form: "figure out", pos: "Phrasal Verb", meaning: "averiguar, descifrar", grammar_note: "Resolver o comprender un misterio." },
+              { surface: "what", reading: "/wʌt/", base_form: "what", pos: "Pronombre", meaning: "qué / lo que", grammar_note: "Conector de cláusula." },
+              { surface: "happened", reading: "/ˈhæpənd/", base_form: "happen", pos: "Verbo (Pasado)", meaning: "pasó, ocurrió", grammar_note: "Pasado simple de happen." },
+              { surface: "here", reading: "/hɪr/", base_form: "here", pos: "Adverbio", meaning: "aquí", grammar_note: "Adverbio de lugar." }
+            ]
+          },
+          {
+            id: "en-b2",
+            box: { x: 0.28, y: 0.68, w: 0.44, h: 0.20 },
+            original_text: "Don't give up! This clue changes everything.",
+            reading_full: "/doʊnt ɡɪv ʌp! ðɪs kluː ˈtʃeɪndʒɪz ˈɛvrɪθɪŋ/",
+            translated_text: "¡No te rindas! Esta pista lo cambia todo.",
+            words: [
+              { surface: "Don't", reading: "/doʊnt/", base_form: "do not", pos: "Auxiliar", meaning: "no (imperativo)", grammar_note: "Contracción imperativa negativa." },
+              { surface: "give up", reading: "/ɡɪv ʌp/", base_form: "give up", pos: "Phrasal Verb", meaning: "rendirse", grammar_note: "Muy frecuente en diálogos de ánimo." },
+              { surface: "This", reading: "/ðɪs/", base_form: "this", pos: "Demostrativo", meaning: "esta", grammar_note: "Singular cercano." },
+              { surface: "clue", reading: "/kluː/", base_form: "clue", pos: "Sustantivo", meaning: "pista, indicio", grammar_note: "Evidencia para resolver un caso." },
+              { surface: "changes", reading: "/ˈtʃeɪndʒɪz/", base_form: "change", pos: "Verbo", meaning: "cambia", grammar_note: "Tercera persona singular." },
+              { surface: "everything", reading: "/ˈɛvrɪθɪŋ/", base_form: "everything", pos: "Pronombre", meaning: "todo", grammar_note: "Totalidad de las cosas." }
+            ]
+          }
+        ]
+      }
+    };
+
+    // ============================================================================
+    // Servicio de Traducción Dinámica al Idioma que el Usuario Elija
+    // ============================================================================
+    const translationCache = {};
+
+    async function translateTextToTargetLang(text, sourceLang, targetLang, contextSentence = "", apiKey = "") {
+      if (!text) return "";
+      const cleanSrc = (sourceLang || "ja").split("-")[0];
+      const cleanTgt = (targetLang || "es").split("-")[0];
+      if (cleanSrc === cleanTgt) return text;
+
+      const cacheKey = `${cleanSrc}_${cleanTgt}_${text}`;
+      if (translationCache[cacheKey]) return translationCache[cacheKey];
+
+      // 1. Si el usuario ingresó Gemini API Key, usamos Gemini para traducción contextual precisa
+      if (apiKey && apiKey.trim()) {
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey.trim())}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [{
+                    text: `Traduce únicamente este texto "${text}" (en contexto de la frase "${contextSentence}") del idioma '${sourceLang}' al idioma '${targetLang}'. Devuelve SOLO la traducción directa sin comillas ni explicaciones extra.`
+                  }]
+                }],
+                generationConfig: { temperature: 0.1 }
+              })
+            }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const out = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (out) {
+              translationCache[cacheKey] = out;
+              return out;
+            }
+          }
+        } catch (e) {
+          // Continúa al traductor gratuito instantáneo
+        }
+      }
+
+      // 2. Traductor multilingüe instantáneo sin necesidad de API Key
+      try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sourceLang || "auto")}&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          const translated = (data[0] || []).map((seg) => seg[0]).join("");
+          if (translated) {
+            translationCache[cacheKey] = translated;
+            return translated;
+          }
+        }
+      } catch (e) {
+        // Fallback secundario MyMemory
+        try {
+          const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${cleanSrc}|${cleanTgt}`;
+          const mmRes = await fetch(mmUrl);
+          if (mmRes.ok) {
+            const mmData = await mmRes.json();
+            const mmText = mmData?.responseData?.translatedText;
+            if (mmText) {
+              translationCache[cacheKey] = mmText;
+              return mmText;
+            }
+          }
+        } catch (_) {}
+      }
+
+      return text;
+    }
+
+    // ============================================================================
+    // Componente Principal
+    // ============================================================================
+    function App() {
+      const [activeChapterKey, setActiveChapterKey] = useState("ja");
+      const [customChapters, setCustomChapters] = useState({});
+      const [displayMode, setDisplayMode] = useState("original"); // "original" | "translated" | "bilingual"
+      const [showFurigana, setShowFurigana] = useState(true);
+      const [showAnimeBorders, setShowAnimeBorders] = useState(true);
+
+      // Idioma al que el usuario quiere traducir palabras y frases seleccionadas
+      const [targetLang, setTargetLang] = useState("es");
+
+      // Selección de globo y selección táctil (1 palabra o varias palabras arrastrando / tocando)
+      const [selectedBubble, setSelectedBubble] = useState(DEMO_CHAPTERS.ja.bubbles[0]);
+      const [selectedWordIndices, setSelectedWordIndices] = useState([0]);
+      const [multiSelectMode, setMultiSelectMode] = useState(false);
+      const [isDraggingWords, setIsDraggingWords] = useState(false);
+      const dragStartRef = useRef(null);
+
+      // Traducción dinámica al idioma elegido por el usuario
+      const [dynamicWordTranslation, setDynamicWordTranslation] = useState("");
+      const [dynamicBubbleTranslation, setDynamicBubbleTranslation] = useState("");
+      const [bubbleTranslationsMap, setBubbleTranslationsMap] = useState({});
+      const [isTranslating, setIsTranslating] = useState(false);
+
+      const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(true);
+      const [savedItems, setSavedItems] = useState([]);
+      const [activeTab, setActiveTab] = useState("reader"); // "reader" | "vocab" | "import"
+
+      // Estados para importar/analizar
+      const [scrapeUrl, setScrapeUrl] = useState("");
+      const [apiKey, setApiKey] = useState("");
+      const [sourceLang, setSourceLang] = useState("ja");
+      const [isLoading, setIsLoading] = useState(false);
+      const [statusMsg, setStatusMsg] = useState("");
+
+      const allChapters = { ...DEMO_CHAPTERS, ...customChapters };
+      const currentChapter = allChapters[activeChapterKey] || DEMO_CHAPTERS.ja;
+
+      const targetLangInfo = TARGET_LANGUAGES.find((l) => l.code === targetLang) || TARGET_LANGUAGES[0];
+
+      // Palabras actualmente seleccionadas (puede ser 1 palabra o una frase de varias palabras)
+      const selectedWordsList = (selectedBubble?.words || []).filter((_, idx) =>
+        selectedWordIndices.includes(idx)
+      );
+      const isPhraseSelected = selectedWordsList.length > 1;
+      const singleSelectedWord = selectedWordsList.length === 1 ? selectedWordsList[0] : null;
+
+      // Une el texto de las palabras seleccionadas (con espacio para idiomas occidentales, sin espacio para JA/ZH)
+      const joinWordsSurface = (wordsArr, langCode) => {
+        if (!wordsArr || wordsArr.length === 0) return "";
+        const needsSpace = ["en", "es", "fr", "pt", "de", "it", "ru", "ko"].includes((langCode || "").split("-")[0]);
+        return wordsArr.map((w) => w.surface).join(needsSpace ? " " : "");
+      };
+
+      const selectedSurfaceText = joinWordsSurface(selectedWordsList, currentChapter.source_language);
+      const selectedReadingText = selectedWordsList.map((w) => w.reading.split(" ")[0]).join(" · ");
+
+      // Actualizar traducción cuando cambia la palabra/frase seleccionada o cuando el usuario cambia el idioma destino
+      useEffect(() => {
+        let cancelled = false;
+        async function updateTranslations() {
+          if (!selectedBubble || selectedWordsList.length === 0) return;
+
+          // Si es 1 sola palabra y el idioma destino es español (por defecto en demos), usamos su significado + traducción
+          if (!isPhraseSelected && targetLang === "es" && singleSelectedWord?.meaning) {
+            setDynamicWordTranslation(singleSelectedWord.meaning);
+            setDynamicBubbleTranslation(selectedBubble.translated_text);
+            return;
+          }
+
+          setIsTranslating(true);
+          const [wordTrans, sentenceTrans] = await Promise.all([
+            translateTextToTargetLang(
+              selectedSurfaceText,
+              currentChapter.source_language,
+              targetLang,
+              selectedBubble.original_text,
+              apiKey
+            ),
+            targetLang === "es"
+              ? Promise.resolve(selectedBubble.translated_text)
+              : translateTextToTargetLang(
+                  selectedBubble.original_text,
+                  currentChapter.source_language,
+                  targetLang,
+                  selectedBubble.original_text,
+                  apiKey
+                )
+          ]);
+
+          if (!cancelled) {
+            setDynamicWordTranslation(wordTrans);
+            setDynamicBubbleTranslation(sentenceTrans);
+            setIsTranslating(false);
+          }
+        }
+        updateTranslations();
+        return () => {
+          cancelled = true;
+        };
+      }, [selectedBubble, selectedWordIndices, targetLang, activeChapterKey]);
+
+      // Traducir todos los globos de la página cuando se cambia de idioma destino
+      useEffect(() => {
+        let cancelled = false;
+        async function translateAllBubbles() {
+          const bubbles = currentChapter.bubbles || [];
+          if (targetLang === "es") {
+            const mapEs = {};
+            bubbles.forEach((b) => {
+              mapEs[b.id] = b.translated_text;
+            });
+            setBubbleTranslationsMap(mapEs);
+            return;
+          }
+          const newMap = {};
+          for (const b of bubbles) {
+            const t = await translateTextToTargetLang(
+              b.original_text,
+              currentChapter.source_language,
+              targetLang,
+              b.original_text,
+              apiKey
+            );
+            newMap[b.id] = t;
+          }
+          if (!cancelled) setBubbleTranslationsMap(newMap);
+        }
+        translateAllBubbles();
+        return () => {
+          cancelled = true;
+        };
+      }, [targetLang, activeChapterKey, customChapters]);
+
+      useEffect(() => {
+        const stopDrag = () => setIsDraggingWords(false);
+        window.addEventListener("pointerup", stopDrag);
+        return () => window.removeEventListener("pointerup", stopDrag);
+      }, []);
+
+      const handleSelectChapter = (key) => {
+        setActiveChapterKey(key);
+        const chap = allChapters[key];
+        if (chap && chap.bubbles && chap.bubbles.length > 0) {
+          setSelectedBubble(chap.bubbles[0]);
+          setSelectedWordIndices([0]);
+        } else {
+          setSelectedBubble(null);
+          setSelectedWordIndices([]);
+        }
+        setActiveTab("reader");
+      };
+
+      // Tocar o arrastrar con el táctil/mouse sobre palabras para seleccionar 1 o varias palabras
+      const handleWordPointerDown = (bubble, wIdx, e) => {
+        e.stopPropagation();
+        setIsBottomSheetOpen(true);
+
+        if (selectedBubble?.id !== bubble.id) {
+          setSelectedBubble(bubble);
+          setSelectedWordIndices([wIdx]);
+          dragStartRef.current = { bubbleId: bubble.id, startIdx: wIdx };
+          setIsDraggingWords(true);
+          return;
+        }
+
+        if (multiSelectMode || e.shiftKey) {
+          // Modo selección de frase: agrega o quita palabras tocadas con el dedo
+          setSelectedWordIndices((prev) => {
+            const exists = prev.includes(wIdx);
+            const next = exists ? prev.filter((i) => i !== wIdx) : [...prev, wIdx].sort((a, b) => a - b);
+            return next.length > 0 ? next : [wIdx];
+          });
+        } else {
+          setSelectedWordIndices([wIdx]);
+          dragStartRef.current = { bubbleId: bubble.id, startIdx: wIdx };
+          setIsDraggingWords(true);
+        }
+      };
+
+      const handleWordPointerEnter = (bubble, wIdx) => {
+        if (!isDraggingWords || !dragStartRef.current) return;
+        if (dragStartRef.current.bubbleId !== bubble.id) return;
+        const start = Math.min(dragStartRef.current.startIdx, wIdx);
+        const end = Math.max(dragStartRef.current.startIdx, wIdx);
+        const range = [];
+        for (let i = start; i <= end; i++) range.push(i);
+        setSelectedWordIndices(range);
+      };
+
+      // Soporte para deslizar el dedo en pantallas táctiles móviles sobre varias palabras
+      const handleBubbleTouchMove = (bubble, e) => {
+        const touch = e.touches?.[0];
+        if (!touch) return;
+        const el = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (!el) return;
+        const wordBtn = el.closest("[data-word-index]");
+        if (!wordBtn) return;
+        const bId = wordBtn.getAttribute("data-bubble-id");
+        const wIdx = parseInt(wordBtn.getAttribute("data-word-index"), 10);
+        if (bId === bubble.id && !Number.isNaN(wIdx)) {
+          if (!dragStartRef.current || dragStartRef.current.bubbleId !== bubble.id) {
+            dragStartRef.current = { bubbleId: bubble.id, startIdx: wIdx };
+          }
+          const start = Math.min(dragStartRef.current.startIdx, wIdx);
+          const end = Math.max(dragStartRef.current.startIdx, wIdx);
+          const range = [];
+          for (let i = start; i <= end; i++) range.push(i);
+          setSelectedBubble(bubble);
+          setSelectedWordIndices(range);
+          setIsBottomSheetOpen(true);
+        }
+      };
+
+      const selectFullBubblePhrase = (bubble) => {
+        if (!bubble?.words) return;
+        setSelectedBubble(bubble);
+        setSelectedWordIndices(bubble.words.map((_, i) => i));
+        setIsBottomSheetOpen(true);
+      };
+
+      const speakText = (text, langCode = "ja-JP") => {
+        if (!("speechSynthesis" in window) || !text) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        const langMap = { ja: "ja-JP", ko: "ko-KR", zh: "zh-CN", en: "en-US", fr: "fr-FR", es: "es-ES" };
+        utterance.lang = langMap[langCode] || langCode || "ja-JP";
+        utterance.rate = 0.92;
+        window.speechSynthesis.speak(utterance);
+      };
+
+      // Guardar palabra individual o frase de varias palabras en Mi Vocabulario / Anki
+      const handleSaveCurrentSelection = () => {
+        if (!selectedBubble || selectedWordsList.length === 0) return;
+        const itemKey = `${selectedSurfaceText}__${targetLang}`;
+        const exists = savedItems.some((item) => item.key === itemKey);
+
+        if (exists) {
+          setSavedItems(savedItems.filter((item) => item.key !== itemKey));
+        } else {
+          const newEntry = {
+            key: itemKey,
+            type: isPhraseSelected ? "Frase seleccionada" : (singleSelectedWord?.pos || "Palabra"),
+            surface: selectedSurfaceText,
+            reading: selectedReadingText,
+            base_form: isPhraseSelected
+              ? selectedWordsList.map((w) => w.base_form).join(" + ")
+              : (singleSelectedWord?.base_form || selectedSurfaceText),
+            meaning: dynamicWordTranslation || singleSelectedWord?.meaning || "",
+            targetLangName: `${targetLangInfo.flag} ${targetLangInfo.name}`,
+            targetLangCode: targetLang,
+            sourceLangCode: currentChapter.source_language || "ja",
+            grammar_note: isPhraseSelected
+              ? selectedWordsList.map((w) => `${w.surface} (${w.meaning})`).join(" · ")
+              : (singleSelectedWord?.grammar_note || ""),
+            sentence: selectedBubble.original_text,
+            sentenceTranslation: dynamicBubbleTranslation || selectedBubble.translated_text,
+            chapterTitle: currentChapter.title
+          };
+          setSavedItems([newEntry, ...savedItems]);
+        }
+      };
+
+      const isCurrentSelectionSaved = () => {
+        if (!selectedSurfaceText) return false;
+        const itemKey = `${selectedSurfaceText}__${targetLang}`;
+        return savedItems.some((item) => item.key === itemKey);
+      };
+
+      // ========================================================================
+      // Exportación directa a Anki (.txt / .tsv compatible con Anki Desktop y AnkiDroid)
+      // ========================================================================
+      const exportToAnkiFile = () => {
+        if (savedItems.length === 0) return;
+        const headers = [
+          "#separator:tab",
+          "#html:true",
+          "#deck:MangaGlot_Idiomas",
+          "#columns:Front\tBack\tReading\tContextSentence\tContextTranslation\tTags"
+        ];
+
+        const cleanTab = (str) => String(str || "").replace(/\t|\r|\n/g, " ").trim();
+
+        const rows = savedItems.map((item) => {
+          const front = `<div style="font-size:28px;font-weight:bold;">${cleanTab(item.surface)}</div>`;
+          const back = `<div><b>${cleanTab(item.meaning)}</b> <small>(${cleanTab(item.targetLangName)})</small><br/><i>${cleanTab(item.type)} — Base: ${cleanTab(item.base_form)}</i><br/><small>${cleanTab(item.grammar_note)}</small></div>`;
+          const reading = cleanTab(item.reading);
+          const contextSentence = cleanTab(item.sentence);
+          const contextTranslation = cleanTab(item.sentenceTranslation);
+          const tags = `MangaGlot idioma_${cleanTab(item.sourceLangCode)} a_${cleanTab(item.targetLangCode)}`;
+          return [front, back, reading, contextSentence, contextTranslation, tags].join("\t");
+        });
+
+        const fileContent = [...headers, ...rows].join("\n");
+        const blob = new Blob(["\uFEFF" + fileContent], { type: "text/tab-separated-values;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `MangaGlot_Anki_${new Date().toISOString().slice(0, 10)}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+
+      const exportToCsvFile = () => {
+        if (savedItems.length === 0) return;
+        const escapeCsv = (val) => `"${String(val || "").replace(/"/g, '""')}"`;
+        const header = ["Palabra_o_Frase", "Lectura", "Traduccion", "Idioma_Destino", "Tipo", "Nota_Desglose", "Oracion_Manga", "Traduccion_Oracion"].join(",");
+        const lines = savedItems.map((item) =>
+          [
+            escapeCsv(item.surface),
+            escapeCsv(item.reading),
+            escapeCsv(item.meaning),
+            escapeCsv(item.targetLangName),
+            escapeCsv(item.type),
+            escapeCsv(item.grammar_note),
+            escapeCsv(item.sentence),
+            escapeCsv(item.sentenceTranslation)
+          ].join(",")
+        );
+        const csvContent = [header, ...lines].join("\n");
+        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `MangaGlot_Vocabulario_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+
+      // Analizar imagen subida con Gemini
+      const analyzeDirectWithGemini = async (file, key, srcLang, tgtLang) => {
+        const base64Data = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const localUrl = URL.createObjectURL(file);
+        const prompt = `Analiza esta página de manga/manhwa/cómic. Detecta todos los globos de diálogo. Devuelve un JSON con este formato exacto:
+{
+  "source_language": "${srcLang === 'auto' ? 'ja' : srcLang}",
+  "target_language": "${tgtLang}",
+  "bubbles": [
+    {
+      "id": "b1",
+      "box": { "x": 0.1, "y": 0.1, "w": 0.3, "h": 0.2 },
+      "original_text": "...",
+      "reading_full": "...",
+      "translated_text": "...",
+      "words": [
+        { "surface": "...", "reading": "...", "base_form": "...", "pos": "...", "meaning": "...", "grammar_note": "..." }
+      ]
+    }
+  ]
+}`;
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { inline_data: { mime_type: file.type || "image/jpeg", data: base64Data } },
+                  { text: prompt }
+                ]
+              }],
+              generationConfig: { responseMimeType: "application/json", temperature: 0.1 }
+            })
+          }
+        );
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error?.message || "Error en Gemini API");
+        const parsed = JSON.parse(json.candidates[0].content.parts[0].text);
+        return { image_url: localUrl, analysis: parsed };
+      };
+
+      const handleUploadImage = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsLoading(true);
+        setStatusMsg("Analizando página con el motor híbrido (OCR + Gemini)...");
+
+        try {
+          let data;
+          if (window.location.protocol === "file:") {
+            if (!apiKey.trim()) {
+              throw new Error("Ingresa tu Gemini API Key arriba para analizar imágenes nuevas.");
+            }
+            data = await analyzeDirectWithGemini(file, apiKey.trim(), sourceLang, targetLang);
+          } else {
+            try {
+              const formData = new FormData();
+              formData.append("file", file);
+              formData.append("idioma_origen", sourceLang);
+              formData.append("idioma_destino", targetLang);
+              formData.append("api_key", apiKey);
+
+              const res = await fetch("/api/analyze-upload", {
+                method: "POST",
+                body: formData
+              });
+              const resJson = await res.json();
+              if (!res.ok) throw new Error(resJson.detail || "Error al analizar la imagen");
+              data = resJson;
+            } catch (serverErr) {
+              if (apiKey.trim()) {
+                data = await analyzeDirectWithGemini(file, apiKey.trim(), sourceLang, targetLang);
+              } else {
+                throw serverErr;
+              }
+            }
+          }
+
+          const newKey = "custom_" + Date.now();
+          const newChap = {
+            id: newKey,
+            title: `Página Importada (${file.name})`,
+            flag: "✨",
+            langName: `IA (${(data.analysis.source_language || sourceLang).toUpperCase()})`,
+            ttsLang: data.analysis.source_language || sourceLang,
+            source_language: data.analysis.source_language || sourceLang,
+            target_language: data.analysis.target_language || targetLang,
+            image_url: data.image_url,
+            bubbles: data.analysis.bubbles || []
+          };
+
+          setCustomChapters((prev) => ({ ...prev, [newKey]: newChap }));
+          setActiveChapterKey(newKey);
+          if (newChap.bubbles.length > 0) {
+            setSelectedBubble(newChap.bubbles[0]);
+            setSelectedWordIndices([0]);
+            setIsBottomSheetOpen(true);
+          }
+          setStatusMsg("¡Página analizada con éxito!");
+          setActiveTab("reader");
+        } catch (err) {
+          setStatusMsg(`Error: ${err.message}`);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      const handleRunScraper = async (e) => {
+        e.preventDefault();
+        if (!scrapeUrl.trim()) return;
+        setIsLoading(true);
+        setStatusMsg("Ejecutando preparar_capitulo_manga() y analizando páginas...");
+
+        try {
+          const res = await fetch("/api/scrape", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url_capitulo: scrapeUrl,
+              idioma_origen: sourceLang,
+              idioma_destino: targetLang,
+              api_key: apiKey || null,
+              max_paginas: 3
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Error al descargar el capítulo");
+
+          const firstPage = data.pages[0];
+          const newKey = "scraped_" + Date.now();
+          const newChap = {
+            id: newKey,
+            title: `Capítulo Web (${data.total_pages} págs.)`,
+            flag: "🌐",
+            langName: `Web (${sourceLang.toUpperCase()})`,
+            ttsLang: sourceLang,
+            source_language: sourceLang,
+            target_language: targetLang,
+            image_url: firstPage.image_url,
+            bubbles: firstPage.analysis?.bubbles || []
+          };
+
+          setCustomChapters((prev) => ({ ...prev, [newKey]: newChap }));
+          setActiveChapterKey(newKey);
+          setStatusMsg(`¡Se descargaron ${data.total_pages} páginas con éxito!`);
+          setActiveTab("reader");
+        } catch (err) {
+          setStatusMsg(`Aviso: ${err.message}`);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col bg-[#070a12] text-slate-100 pb-80">
+          {/* BARRA SUPERIOR */}
+          <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-3 sm:px-5 py-2.5">
+            <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 via-fuchsia-600 to-indigo-600 flex items-center justify-center font-black text-xl shadow-lg shadow-rose-500/25 border border-white/20">
+                  語
+                </div>
+                <div>
+                  <h1 className="font-extrabold text-base sm:text-lg tracking-tight flex items-center gap-2">
+                    MangaGlot
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      Multi-Idioma + Anki
+                    </span>
+                  </h1>
+                  <p className="text-[11px] text-slate-400 hidden md:block">
+                    Toca una palabra o desliza el dedo sobre varias palabras para traducirlas al idioma que elijas
+                  </p>
+                </div>
+              </div>
+
+              {/* Selector global de "Traducir a:" */}
+              <div className="flex items-center gap-2 bg-slate-950/90 px-3 py-1.5 rounded-xl border border-indigo-500/40 shadow-inner">
+                <span className="text-xs font-bold text-indigo-300 whitespace-nowrap">
+                  🌍 Traducir a:
+                </span>
+                <select
+                  value={targetLang}
+                  onChange={(e) => setTargetLang(e.target.value)}
+                  className="bg-slate-900 text-white font-bold text-xs sm:text-sm rounded-lg px-2.5 py-1 border border-slate-700 focus:outline-none focus:border-rose-500"
+                >
+                  {TARGET_LANGUAGES.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.flag} {lang.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Pestañas principales */}
+              <div className="flex items-center gap-1.5 bg-slate-800/90 p-1 rounded-xl border border-slate-700/70">
+                <button
+                  onClick={() => setActiveTab("reader")}
+                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition ${
+                    activeTab === "reader" ? "bg-indigo-600 text-white shadow" : "text-slate-300 hover:text-white"
+                  }`}
+                >
+                  📖 Lector
+                </button>
+                <button
+                  onClick={() => setActiveTab("vocab")}
+                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 ${
+                    activeTab === "vocab" ? "bg-indigo-600 text-white shadow" : "text-slate-300 hover:text-white"
+                  }`}
+                >
+                  ⭐ Vocabulario / Anki
+                  <span className="px-1.5 py-0.2 rounded-full text-[11px] bg-slate-950 text-amber-300 font-bold">
+                    {savedItems.length}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setActiveTab("import")}
+                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition ${
+                    activeTab === "import" ? "bg-rose-600 text-white shadow" : "text-slate-300 hover:text-white"
+                  }`}
+                >
+                  ⚡ Importar / IA
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* PESTAÑA LECTOR */}
+          {activeTab === "reader" && (
+            <main className="max-w-7xl w-full mx-auto px-2 sm:px-4 pt-3 flex-1 flex flex-col gap-3">
+              {/* Barra de Controles del Lector */}
+              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2.5 shadow-lg">
+                {/* Idioma del Manga */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 mr-1">
+                    Manga:
+                  </span>
+                  {Object.entries(allChapters).map(([key, chap]) => (
+                    <button
+                      key={key}
+                      onClick={() => handleSelectChapter(key)}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition border ${
+                        activeChapterKey === key
+                          ? "bg-indigo-600/30 border-indigo-400 text-white shadow-sm"
+                          : "bg-slate-800/70 border-slate-700/70 text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <span>{chap.flag}</span>
+                      <span>{chap.langName}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Controles de Selección de Frase Táctil + Modo de Globo */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Botón Modo Selección de Frase (Varias palabras con el táctil) */}
+                  <button
+                    onClick={() => setMultiSelectMode(!multiSelectMode)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border transition flex items-center gap-1.5 ${
+                      multiSelectMode
+                        ? "bg-fuchsia-600 border-fuchsia-400 text-white shadow-lg shadow-fuchsia-600/30 animate-pulse"
+                        : "bg-slate-800 border-slate-700 text-slate-200 hover:border-fuchsia-500/60"
+                    }`}
+                    title="Actívalo para tocar varias palabras y traducir la frase junta, o desliza el dedo sobre las palabras"
+                  >
+                    <span>👆</span>
+                    <span>{multiSelectMode ? "Seleccionando Frase (Toca palabras)" : "Seleccionar Varias Palabras"}</span>
+                  </button>
+
+                  <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      onClick={() => setDisplayMode("original")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                        displayMode === "original" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      🈶 Original
+                    </button>
+                    <button
+                      onClick={() => setDisplayMode("translated")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                        displayMode === "translated" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      🔄 Traducir Globo
+                    </button>
+                    <button
+                      onClick={() => setDisplayMode("bilingual")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                        displayMode === "bilingual" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      ✨ Ambos
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => setShowFurigana(!showFurigana)}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                      showFurigana
+                        ? "bg-rose-500/20 border-rose-500/50 text-rose-200"
+                        : "bg-slate-800 border-slate-700 text-slate-400"
+                    }`}
+                  >
+                    {showFurigana ? "Lectura: ON" : "Lectura: OFF"}
+                  </button>
+
+                  <button
+                    onClick={() => setShowAnimeBorders(!showAnimeBorders)}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                      showAnimeBorders
+                        ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-200"
+                        : "bg-slate-800 border-slate-700 text-slate-400"
+                    }`}
+                  >
+                    🎨 Bordes Anime
+                  </button>
+                </div>
+              </div>
+
+              {/* CONTENEDOR CON IMÁGENES DE ANIME POR LOS BORDES DEL MANGA */}
+              <div className="relative flex items-stretch justify-center gap-3 lg:gap-4 my-1">
+                {/* BORDE IZQUIERDO DE ANIME */}
+                {showAnimeBorders && (
+                  <aside className="hidden md:flex flex-col justify-between w-44 lg:w-56 shrink-0 select-none gap-3">
+                    <div className="rounded-2xl overflow-hidden border-2 border-rose-500/40 shadow-xl bg-slate-900/90 group">
+                      <img
+                        src={ANIME_BORDERS.leftTop}
+                        alt="Personaje Anime Izquierdo Superior"
+                        className="w-full h-auto object-cover group-hover:scale-105 transition duration-300"
+                      />
+                    </div>
+                    <div className="bg-gradient-to-b from-slate-900/95 to-indigo-950/80 border border-indigo-500/30 rounded-2xl p-3 text-center shadow-lg">
+                      <span className="text-[11px] font-black uppercase tracking-widest text-rose-400 block">
+                        Modo Estudio Activo
+                      </span>
+                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                        Arrastra el dedo sobre varias palabras o usa <b>Seleccionar Varias Palabras</b> para traducir frases completas a <b>{targetLangInfo.flag} {targetLangInfo.name}</b>.
+                      </p>
+                    </div>
+                    <div className="rounded-2xl overflow-hidden border-2 border-indigo-500/40 shadow-xl bg-slate-900/90 group">
+                      <img
+                        src={ANIME_BORDERS.leftBottom}
+                        alt="Personaje Anime Izquierdo Inferior"
+                        className="w-full h-auto object-cover group-hover:scale-105 transition duration-300"
+                      />
+                    </div>
+                  </aside>
+                )}
+
+                {/* MARCO CENTRAL DEL MANGA CON BORDE DECORATIVO ANIME */}
+                <div className="relative w-full max-w-[680px] rounded-3xl p-2 sm:p-3 bg-gradient-to-br from-rose-500/35 via-indigo-600/30 to-amber-500/35 anime-border-glow">
+                  {/* Banner Anime Superior e Inferior para Móvil y Escritorio */}
+                  {showAnimeBorders && (
+                    <div className="flex items-center justify-between px-3 py-1.5 mb-2 rounded-2xl bg-slate-950/90 border border-white/10 text-[11px] font-bold text-slate-300">
+                      <span className="flex items-center gap-1.5 text-rose-400">
+                        ⚔️ マンガ学習 • ANIME EDITION
+                      </span>
+                      <span className="text-indigo-300">
+                        Traduciendo a: {targetLangInfo.flag} {targetLangInfo.name}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* LIENZO DE LA PÁGINA DE MANGA */}
+                  <div className="relative w-full rounded-2xl overflow-hidden shadow-2xl border-2 border-slate-900 bg-slate-900 select-none">
+                    <img
+                      src={currentChapter.image_url}
+                      alt={currentChapter.title}
+                      className="w-full h-auto block"
+                    />
+
+                    {/* Globos de diálogo interactivos */}
+                    {(currentChapter.bubbles || []).map((bubble, bIndex) => {
+                      const isBubbleActive = selectedBubble?.id === bubble.id;
+                      const styleBox = {
+                        left: `${bubble.box.x * 100}%`,
+                        top: `${bubble.box.y * 100}%`,
+                        width: `${bubble.box.w * 100}%`,
+                        minHeight: `${bubble.box.h * 100}%`
+                      };
+                      const translatedBubbleText =
+                        bubbleTranslationsMap[bubble.id] || bubble.translated_text;
+
+                      return (
+                        <div
+                          key={bubble.id}
+                          style={styleBox}
+                          onTouchMove={(e) => handleBubbleTouchMove(bubble, e)}
+                          onClick={() => {
+                            if (selectedBubble?.id !== bubble.id) {
+                              setSelectedBubble(bubble);
+                              setSelectedWordIndices([0]);
+                              setIsBottomSheetOpen(true);
+                            }
+                          }}
+                          className={`manga-bubble absolute rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer shadow-xl ${
+                            isBubbleActive
+                              ? "bg-white text-slate-900 ring-4 ring-rose-500 z-20"
+                              : "bg-white/95 text-slate-900 hover:ring-2 hover:ring-indigo-500 z-10"
+                          }`}
+                        >
+                          {/* Cabecera del globo */}
+                          <div className="flex items-center justify-between gap-1 mb-1 pb-1 border-b border-slate-200">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                selectFullBubblePhrase(bubble);
+                              }}
+                              className="text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-900 hover:bg-indigo-700 text-white transition"
+                              title="Seleccionar toda la frase del globo"
+                            >
+                              Frase #{bIndex + 1}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                speakText(bubble.original_text, currentChapter.ttsLang);
+                              }}
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 hover:bg-indigo-200"
+                              title="Escuchar oración completa"
+                            >
+                              🔊 Audio
+                            </button>
+                          </div>
+
+                          {/* Contenido del globo */}
+                          {displayMode === "translated" ? (
+                            <div
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                selectFullBubblePhrase(bubble);
+                              }}
+                              className="my-auto py-1 text-center"
+                            >
+                              <p className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
+                                {translatedBubbleText}
+                              </p>
+                              <p className="text-[10px] text-indigo-600 font-semibold mt-1">
+                                ({targetLangInfo.flag} Toca para ver desglose)
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="my-auto flex flex-wrap items-center justify-center gap-1 py-0.5">
+                              {(bubble.words || []).map((w, wIdx) => {
+                                const isSelected =
+                                  selectedBubble?.id === bubble.id &&
+                                  selectedWordIndices.includes(wIdx);
+                                return (
+                                  <button
+                                    key={wIdx}
+                                    data-bubble-id={bubble.id}
+                                    data-word-index={wIdx}
+                                    onPointerDown={(e) => handleWordPointerDown(bubble, wIdx, e)}
+                                    onPointerEnter={() => handleWordPointerEnter(bubble, wIdx)}
+                                    className={`word-chip px-1.5 py-0.5 rounded-lg text-left border transition flex flex-col items-center ${
+                                      isSelected
+                                        ? "bg-rose-600 text-white border-rose-700 shadow-md scale-105"
+                                        : "bg-slate-100 hover:bg-indigo-100 text-slate-900 border-slate-300"
+                                    }`}
+                                  >
+                                    {showFurigana && (
+                                      <span
+                                        className={`text-[9px] leading-none font-medium mb-0.5 ${
+                                          isSelected ? "text-rose-100" : "text-slate-500"
+                                        }`}
+                                      >
+                                        {w.reading.split(" ")[0]}
+                                      </span>
+                                    )}
+                                    <span className="text-xs sm:text-sm font-extrabold leading-tight">
+                                      {w.surface}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Modo Ambos (Bilingüe) */}
+                          {displayMode === "bilingual" && (
+                            <div className="mt-1.5 pt-1 border-t border-slate-200 text-center">
+                              <p className="text-[11px] font-semibold text-indigo-900 leading-tight">
+                                {translatedBubbleText}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* BORDE DERECHO DE ANIME */}
+                {showAnimeBorders && (
+                  <aside className="hidden md:flex flex-col justify-between w-44 lg:w-56 shrink-0 select-none gap-3">
+                    <div className="rounded-2xl overflow-hidden border-2 border-teal-500/40 shadow-xl bg-slate-900/90 group">
+                      <img
+                        src={ANIME_BORDERS.rightTop}
+                        alt="Personaje Anime Derecho Superior"
+                        className="w-full h-auto object-cover group-hover:scale-105 transition duration-300"
+                      />
+                    </div>
+                    <div className="bg-gradient-to-b from-slate-900/95 to-rose-950/70 border border-rose-500/30 rounded-2xl p-3 text-center shadow-lg">
+                      <span className="text-[11px] font-black uppercase tracking-widest text-amber-400 block">
+                        Tarjetas Anki ({savedItems.length})
+                      </span>
+                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                        Guarda cualquier palabra o frase que selecciones con el táctil y expórtala a <b>Anki</b> en 1 clic.
+                      </p>
+                      {savedItems.length > 0 && (
+                        <button
+                          onClick={exportToAnkiFile}
+                          className="mt-2 w-full py-1.5 px-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition"
+                        >
+                          📥 Descargar Anki (.txt)
+                        </button>
+                      )}
+                    </div>
+                    <div className="rounded-2xl overflow-hidden border-2 border-amber-500/40 shadow-xl bg-slate-900/90 group">
+                      <img
+                        src={ANIME_BORDERS.rightBottom}
+                        alt="Personaje Anime Derecho Inferior"
+                        className="w-full h-auto object-cover group-hover:scale-105 transition duration-300"
+                      />
+                    </div>
+                  </aside>
+                )}
+              </div>
+            </main>
+          )}
+
+          {/* ====================================================================
+              PESTAÑA DE VOCABULARIO GUARDADO + EXPORTACIÓN ANKI
+             ==================================================================== */}
+          {activeTab === "vocab" && (
+            <main className="max-w-5xl w-full mx-auto px-4 pt-6 flex-1">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-extrabold flex items-center gap-2">
+                      ⭐ Mis Traducciones Guardadas y Exportador Anki
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Aquí se guardan tanto las palabras sueltas como las frases de varias palabras que seleccionaste con el táctil.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={exportToAnkiFile}
+                      disabled={savedItems.length === 0}
+                      className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 disabled:opacity-40 text-slate-950 font-black text-xs sm:text-sm shadow-lg flex items-center gap-2 transition"
+                    >
+                      📥 Exportar Mazo para Anki (.txt / .tsv)
+                    </button>
+                    <button
+                      onClick={exportToCsvFile}
+                      disabled={savedItems.length === 0}
+                      className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-bold text-xs border border-slate-700 transition"
+                    >
+                      📊 Exportar CSV (Excel)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Instrucciones rápidas de importación en Anki */}
+                <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-3.5 text-xs text-indigo-200 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <b>💡 ¿Cómo importar en Anki Desktop o AnkiDroid?</b> Haz clic en <b>"Exportar Mazo para Anki (.txt)"</b>, abre Anki → <i>Archivo → Importar</i> y selecciona el archivo descargado. Ya incluye las cabeceras automáticas de Anki (Frente, Reverso, Lectura, Oración del Manga y Etiquetas).
+                  </div>
+                </div>
+
+                {savedItems.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400">
+                    <p className="text-base font-bold mb-1">Aún no has guardado palabras ni frases</p>
+                    <p className="text-xs">
+                      En el Lector, toca una palabra o selecciona varias palabras con el táctil y pulsa "Guardar en Vocabulario / Anki".
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid sm:grid-cols-2 gap-3.5">
+                    {savedItems.map((item, idx) => (
+                      <div
+                        key={item.key || idx}
+                        className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col justify-between gap-2.5 relative group"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold">
+                                {item.type}
+                              </span>
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-semibold">
+                                → {item.targetLangName}
+                              </span>
+                            </div>
+                            <span className="text-xs font-bold text-rose-400 block">
+                              {item.reading}
+                            </span>
+                            <h3 className="text-xl sm:text-2xl font-black text-white mt-0.5">
+                              {item.surface}
+                            </h3>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => speakText(item.surface, item.sourceLangCode)}
+                              className="p-2 rounded-lg bg-slate-800 hover:bg-indigo-600 text-xs"
+                              title="Escuchar pronunciación"
+                            >
+                              🔊
+                            </button>
+                            <button
+                              onClick={() =>
+                                setSavedItems(savedItems.filter((x) => x.key !== item.key))
+                              }
+                              className="p-2 rounded-lg bg-slate-800 hover:bg-rose-600 text-xs text-slate-400 hover:text-white"
+                              title="Eliminar tarjeta"
+                            >
+                              🗑
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="text-base font-extrabold text-emerald-400">
+                          {item.meaning}
+                        </p>
+
+                        {item.grammar_note && (
+                          <p className="text-xs text-slate-300 bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            💡 {item.grammar_note}
+                          </p>
+                        )}
+
+                        {item.sentence && (
+                          <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400">
+                            <p className="font-bold text-slate-200">{item.sentence}</p>
+                            <p className="text-amber-300/90">{item.sentenceTranslation}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </main>
+          )}
+
+          {/* PESTAÑA DE IMPORTACIÓN (SCRAPER PYTHON + SUBIDA DE IMÁGENES CON GEMINI/OCR) */}
+          {activeTab === "import" && (
+            <main className="max-w-3xl w-full mx-auto px-4 pt-6 flex-1 space-y-5">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  ⚡ Motor Híbrido: Gemini Vision + OCR Local + Scraper Python
+                </h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Conecta tu clave de Gemini para analizar páginas nuevas o usa tu función <code className="text-rose-400">preparar_capitulo_manga()</code> para descargar capítulos desde una URL.
+                </p>
+
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-1">
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">
+                      Idioma del Manga
+                    </label>
+                    <select
+                      value={sourceLang}
+                      onChange={(e) => setSourceLang(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm"
+                    >
+                      <option value="ja">🇯🇵 Japonés</option>
+                      <option value="ko">🇰🇷 Coreano</option>
+                      <option value="zh">🇨🇳 Chino</option>
+                      <option value="en">🇺🇸 Inglés</option>
+                      <option value="fr">🇫🇷 Francés</option>
+                      <option value="auto">✨ Detectar Automático</option>
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">
+                      Gemini API Key (para analizar imágenes nuevas)
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="AIzaSy... (Opcional para traducciones, requerido para OCR de imágenes nuevas)"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Subir imagen */}
+                <div className="border-2 border-dashed border-slate-700 rounded-2xl p-5 text-center hover:border-indigo-500 transition">
+                  <p className="text-sm font-bold mb-1">
+                    1. Subir página de Manga / Manhwa (.jpg, .png, .webp)
+                  </p>
+                  <p className="text-xs text-slate-400 mb-3">
+                    Detectará los globos y separará cada palabra para traducirla al idioma que elijas.
+                  </p>
+                  <label className="inline-block px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer">
+                    📂 Seleccionar Imagen y Analizar
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleUploadImage}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {/* Scraper Python */}
+                <form onSubmit={handleRunScraper} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                  <p className="text-sm font-bold">
+                    2. Descargar desde URL con <code className="text-emerald-400">preparar_capitulo_manga()</code>
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      placeholder="https://sitio-manga.com/capitulo-1"
+                      value={scrapeUrl}
+                      onChange={(e) => setScrapeUrl(e.target.value)}
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs"
+                    >
+                      {isLoading ? "Procesando..." : "Descargar"}
+                    </button>
+                  </div>
+                </form>
+
+                {statusMsg && (
+                  <div className="p-3 rounded-xl bg-indigo-950/60 border border-indigo-500/40 text-xs text-indigo-200 font-medium">
+                    {statusMsg}
+                  </div>
+                )}
+              </div>
+            </main>
+          )}
+
+          {/* ====================================================================
+              PANEL INFERIOR (BOTTOM SHEET): TRADUCE 1 PALABRA O VARIAS PALABRAS
+              SELECCIONADAS CON EL TÁCTIL AL IDIOMA QUE QUIERAS + GUARDAR EN ANKI
+             ==================================================================== */}
+          {selectedBubble && isBottomSheetOpen && (
+            <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900/98 backdrop-blur-xl border-t-2 border-rose-500/70 shadow-[0_-18px_45px_rgba(0,0,0,0.85)] bottom-sheet-enter">
+              <div className="max-w-6xl mx-auto px-3 sm:px-5 py-3">
+                {/* Fila superior del panel: Selección interactiva de palabras de la frase + Selector de idioma */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-800">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      {isPhraseSelected ? `Frase (${selectedWordsList.length} palabras)` : "Palabra"}
+                    </span>
+
+                    {/* Chips de palabras en el panel inferior: permite tocar varias para armar frase */}
+                    {(selectedBubble.words || []).map((w, idx) => {
+                      const active = selectedWordIndices.includes(idx);
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            if (multiSelectMode) {
+                              setSelectedWordIndices((prev) => {
+                                const exists = prev.includes(idx);
+                                const next = exists
+                                  ? prev.filter((i) => i !== idx)
+                                  : [...prev, idx].sort((a, b) => a - b);
+                                return next.length > 0 ? next : [idx];
+                              });
+                            } else {
+                              setSelectedWordIndices([idx]);
+                            }
+                          }}
+                          className={`px-2 py-0.5 rounded-lg text-xs sm:text-sm font-bold transition ${
+                            active
+                              ? "bg-rose-600 text-white shadow ring-2 ring-rose-400"
+                              : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                          }`}
+                        >
+                          {w.surface}
+                        </button>
+                      );
+                    })}
+
+                    <button
+                      onClick={() => setMultiSelectMode(!multiSelectMode)}
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border transition ${
+                        multiSelectMode
+                          ? "bg-fuchsia-600 text-white border-fuchsia-400"
+                          : "bg-slate-800 text-fuchsia-300 border-fuchsia-500/40 hover:bg-slate-700"
+                      }`}
+                      title="Activa para tocar varias palabras y traducirlas juntas"
+                    >
+                      {multiSelectMode ? "✓ Uniendo palabras" : "+ Unir varias palabras"}
+                    </button>
+
+                    <button
+                      onClick={() => selectFullBubblePhrase(selectedBubble)}
+                      className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-amber-300 font-semibold"
+                    >
+                      Seleccionar toda la frase
+                    </button>
+                  </div>
+
+                  {/* Selector de idioma directo en el panel inferior */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 font-semibold">Idioma:</span>
+                    <select
+                      value={targetLang}
+                      onChange={(e) => setTargetLang(e.target.value)}
+                      className="bg-slate-950 text-white font-bold text-xs rounded-lg px-2 py-1 border border-indigo-500/50"
+                    >
+                      {TARGET_LANGUAGES.map((lang) => (
+                        <option key={lang.code} value={lang.code}>
+                          {lang.flag} {lang.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => setIsBottomSheetOpen(false)}
+                      className="text-slate-400 hover:text-white text-xs font-bold px-2 py-1 rounded-lg bg-slate-800"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cuerpo del Panel Inferior: Muestra 1 palabra o la Frase de varias palabras seleccionada */}
+                {selectedWordsList.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                    {/* Palabra o Frase Seleccionada + Lectura + Audio */}
+                    <div className="md:col-span-4 flex items-center gap-3 bg-slate-950/90 border border-slate-800 p-3 rounded-xl">
+                      <button
+                        onClick={() => speakText(selectedSurfaceText, currentChapter.ttsLang)}
+                        className="w-11 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center text-lg shadow shrink-0"
+                        title="Escuchar selección"
+                      >
+                        🔊
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-rose-400 truncate">
+                          {selectedReadingText}
+                        </div>
+                        <div className="text-xl sm:text-2xl font-black text-white tracking-tight break-words">
+                          {selectedSurfaceText}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Traducción al idioma elegido + Desglose */}
+                    <div className="md:col-span-5 bg-slate-950/90 border border-slate-800 p-3 rounded-xl flex flex-col justify-center">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          {targetLangInfo.flag} {targetLangInfo.name}
+                        </span>
+                        <span className="text-base sm:text-lg font-black text-emerald-400">
+                          {isTranslating ? "Traduciendo..." : dynamicWordTranslation}
+                        </span>
+                      </div>
+
+                      {isPhraseSelected ? (
+                        <div className="text-[11px] text-slate-300 mt-0.5 flex flex-wrap gap-1.5">
+                          {selectedWordsList.map((w, i) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">
+                              <b className="text-white">{w.surface}</b>: {w.meaning}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        singleSelectedWord?.grammar_note && (
+                          <p className="text-xs text-slate-300 mt-0.5 leading-snug">
+                            💡 {singleSelectedWord.grammar_note}
+                          </p>
+                        )
+                      )}
+
+                      <p className="text-[11px] text-amber-300/90 mt-1 pt-1 border-t border-slate-800/80 truncate">
+                        Globo completo: “{dynamicBubbleTranslation || selectedBubble.translated_text}”
+                      </p>
+                    </div>
+
+                    {/* Acciones: Guardar Traducción y Exportar Anki */}
+                    <div className="md:col-span-3 flex flex-col gap-1.5">
+                      <button
+                        onClick={handleSaveCurrentSelection}
+                        className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-1.5 shadow ${
+                          isCurrentSelectionSaved()
+                            ? "bg-amber-500 text-slate-950"
+                            : "bg-rose-600 hover:bg-rose-500 text-white"
+                        }`}
+                      >
+                        {isCurrentSelectionSaved()
+                          ? "★ Guardada en Vocabulario / Anki"
+                          : `☆ Guardar ${isPhraseSelected ? "Frase" : "Palabra"} para Anki`}
+                      </button>
+
+                      {savedItems.length > 0 && (
+                        <button
+                          onClick={exportToAnkiFile}
+                          className="w-full py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] border border-amber-500/30 transition"
+                        >
+                          📥 Exportar {savedItems.length} a Anki (.txt)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
