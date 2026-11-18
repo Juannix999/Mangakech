@@ -48,6 +48,32 @@ def index():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
+@app.get("/api/download/apk")
+def download_apk():
+    candidates = [
+        STATIC_DIR / "MangaGlot.apk",
+        BASE_DIR.parent / "MangaGlot.apk",
+        BASE_DIR.parent / "mangaglot_apk" / "platforms" / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk",
+    ]
+
+    for apk_path in candidates:
+        if apk_path.is_file() and apk_path.stat().st_size > 0:
+            return FileResponse(
+                path=str(apk_path),
+                media_type="application/vnd.android.package-archive",
+                filename="MangaGlot.apk",
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Content-Disposition": 'attachment; filename="MangaGlot.apk"',
+                },
+            )
+
+    raise HTTPException(
+        status_code=404,
+        detail="El APK no está disponible. Ejecuta la compilación de Android e intenta de nuevo.",
+    )
+
+
 @app.post("/api/scrape")
 def scrape_and_analyze(req: ScrapeRequest):
     """

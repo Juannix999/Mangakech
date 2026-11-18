@@ -1068,6 +1068,14 @@
 
               {/* Pestañas principales */}
               <div className="flex items-center gap-1.5 bg-slate-800/90 p-1 rounded-xl border border-slate-700/70">
+                <a
+                  href="/api/download/apk"
+                  download="MangaGlot.apk"
+                  className="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition bg-emerald-600 hover:bg-emerald-500 text-white shadow flex items-center gap-1.5"
+                  title="Descargar la aplicación Android MangaGlot"
+                >
+                  📱 Descargar APK
+                </a>
                 <button
                   onClick={() => setActiveTab("reader")}
                   className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition ${
