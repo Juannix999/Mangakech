@@ -208,34 +208,72 @@
       apiCurrentPageIdx: 0
     };
 
+    async function fetchMangaApi(url, attempts = 3) {
+      let lastError;
+      for (let attempt = 1; attempt <= attempts; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        try {
+          const res = await fetch(url, {
+            signal: controller.signal,
+            headers: { "Accept": "application/json" }
+          });
+          if (!res.ok) {
+            throw new Error(`MangaDex respondió con HTTP ${res.status}`);
+          }
+          return await res.json();
+        } catch (error) {
+          lastError = error;
+          if (attempt < attempts) {
+            await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+          }
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      }
+      throw lastError || new Error("No se pudo conectar con MangaDex");
+    }
+
+    function isCordovaApp() {
+      return window.location.protocol === "file:" || Boolean(window.cordova);
+    }
+
     // Llamado en vivo a la API Pública Oficial de MangaDex
     async function searchMangaDexApi(query = "") {
       mState.apiLoading = true;
       mState.apiError = "";
       renderPhone();
       try {
-        const qParam = query.trim() ? `&title=${encodeURIComponent(query.trim())}` : "";
-        const url = `https://api.mangadex.org/manga?limit=8&includes[]=cover_art&contentRating[]=safe&order[followedCount]=desc${qParam}`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("No se pudo conectar a MangaDex API");
-        const json = await res.json();
-        mState.apiMangas = (json.data || []).map((item) => {
-          const titles = item.attributes?.title || {};
-          const title = titles.es || titles.en || titles["ja-ro"] || Object.values(titles)[0] || "Manga";
-          const coverRel = (item.relationships || []).find((r) => r.type === "cover_art");
-          const fileName = coverRel?.attributes?.fileName;
-          const cover = fileName
-            ? `https://uploads.mangadex.org/covers/${item.id}/${fileName}.256.jpg`
-            : TOP_BANNER;
-          return {
+        if (isCordovaApp()) {
+          const qParam = query.trim() ? `&title=${encodeURIComponent(query.trim())}` : "";
+          const url = `https://api.mangadex.org/manga?limit=8&includes[]=cover_art&contentRating[]=safe&order[followedCount]=desc${qParam}`;
+          const json = await fetchMangaApi(url);
+          mState.apiMangas = (json.data || []).map((item) => {
+            const titles = item.attributes?.title || {};
+            const title = titles.es || titles.en || titles["ja-ro"] || Object.values(titles)[0] || "Manga";
+            const coverRel = (item.relationships || []).find((r) => r.type === "cover_art");
+            const fileName = coverRel?.attributes?.fileName;
+            return {
+              id: item.id,
+              title,
+              origLang: item.attributes?.originalLanguage || "ja",
+              cover: fileName
+                ? `https://uploads.mangadex.org/covers/${item.id}/${fileName}.256.jpg`
+                : TOP_BANNER
+            };
+          });
+        } else {
+          const params = new URLSearchParams({ q: query.trim(), lang: mState.apiLangFilter });
+          const json = await fetchMangaApi(`/api/mangadex/search?${params}`);
+          mState.apiMangas = (json.results || []).map((item) => ({
             id: item.id,
-            title,
-            origLang: item.attributes?.originalLanguage || "ja",
-            cover
-          };
-        });
+            title: item.title,
+            origLang: item.originalLanguage || "ja",
+            cover: item.cover_url || TOP_BANNER
+          }));
+        }
       } catch (e) {
-        mState.apiError = `No se pudo consultar MangaDex: ${e?.message || "conexión rechazada"}`;
+        mState.apiError = `No se pudo consultar MangaDex: ${e?.message || "conexión rechazada"}. Revisa Internet y vuelve a intentar.`;
       } finally {
         mState.apiLoading = false;
         renderPhone();
@@ -248,20 +286,30 @@
       mState.apiError = "";
       renderPhone();
       try {
-        const url = `https://api.mangadex.org/manga/${mangaObj.id}/feed?limit=12&order[chapter]=asc&translatedLanguage[]=${mState.apiLangFilter}`;
-        const res = await fetch(url);
-        const json = await res.json();
-        mState.apiChapters = (json.data || [])
-          .filter((ch) => !ch.attributes?.externalUrl && ch.attributes?.pages > 0)
-          .map((ch) => ({
+        if (isCordovaApp()) {
+          const url = `https://api.mangadex.org/manga/${mangaObj.id}/feed?limit=12&order[chapter]=asc&translatedLanguage[]=${mState.apiLangFilter}`;
+          const json = await fetchMangaApi(url);
+          mState.apiChapters = (json.data || [])
+            .filter((ch) => !ch.attributes?.externalUrl && ch.attributes?.pages > 0)
+            .map((ch) => ({
+              id: ch.id,
+              chapter: ch.attributes?.chapter || "1",
+              title: ch.attributes?.title || `Capítulo ${ch.attributes?.chapter || 1}`,
+              lang: ch.attributes?.translatedLanguage || mState.apiLangFilter,
+              pages: ch.attributes?.pages || 0
+            }));
+        } else {
+          const json = await fetchMangaApi(`/api/mangadex/chapters/${encodeURIComponent(mangaObj.id)}?lang=${encodeURIComponent(mState.apiLangFilter)}`);
+          mState.apiChapters = (json.chapters || []).map((ch) => ({
             id: ch.id,
-            chapter: ch.attributes?.chapter || "1",
-            title: ch.attributes?.title || `Capítulo ${ch.attributes?.chapter || 1}`,
-            lang: ch.attributes?.translatedLanguage || mState.apiLangFilter,
-            pages: ch.attributes?.pages || 0
+            chapter: ch.chapter || "1",
+            title: ch.title || `Capítulo ${ch.chapter || 1}`,
+            lang: ch.language || mState.apiLangFilter,
+            pages: ch.pages || 0
           }));
+        }
       } catch (e) {
-        mState.apiError = "Error al obtener capítulos desde la API.";
+        mState.apiError = `Error al obtener capítulos: ${e?.message || "conexión rechazada"}.`;
       } finally {
         mState.apiLoading = false;
         renderPhone();
@@ -272,12 +320,16 @@
       mState.apiLoading = true;
       renderPhone();
       try {
-        const res = await fetch(`https://api.mangadex.org/at-home/server/${chObj.id}`);
-        const json = await res.json();
-        const base = json.baseUrl;
-        const hash = json.chapter?.hash;
-        const files = json.chapter?.dataSaver || [];
-        mState.apiPageUrls = files.map((f) => `${base}/data-saver/${hash}/${f}`);
+        if (isCordovaApp()) {
+          const json = await fetchMangaApi(`https://api.mangadex.org/at-home/server/${chObj.id}`);
+          const base = json.baseUrl;
+          const hash = json.chapter?.hash;
+          const files = json.chapter?.dataSaver || [];
+          mState.apiPageUrls = files.map((f) => `${base}/data-saver/${hash}/${f}`);
+        } else {
+          const json = await fetchMangaApi(`/api/mangadex/pages/${encodeURIComponent(chObj.id)}`);
+          mState.apiPageUrls = json.pages || [];
+        }
         mState.apiCurrentPageIdx = 0;
 
         if (mState.apiPageUrls.length > 0) {
